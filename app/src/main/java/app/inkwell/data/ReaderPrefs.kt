@@ -4,7 +4,17 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-enum class ReaderViewMode(val label: String) { LTR("Paged →"), RTL("Paged ←"), VERTICAL("Vertical"), WEBTOON("Webtoon") }
+enum class ReaderViewMode(val label: String) {
+    LTR("Paged →"), RTL("Paged ←"), VERTICAL("Vertical"), WEBTOON("Webtoon"),
+    SCROLL_LTR("Scroll →"), SCROLL_RTL("Scroll ←"), LONG_STRIP("Long strip");
+
+    val continuousVertical get() = this == WEBTOON || this == LONG_STRIP
+    val continuousHorizontal get() = this == SCROLL_LTR || this == SCROLL_RTL
+    val pagedHorizontal get() = this == LTR || this == RTL
+    val rtl get() = this == RTL || this == SCROLL_RTL
+}
+enum class ReaderDualPage(val label: String) { OFF("Off"), LANDSCAPE("Landscape"), ALWAYS("Always") }
+enum class ReaderOrientation(val label: String) { FREE("Auto"), PORTRAIT("Portrait"), LANDSCAPE("Landscape") }
 enum class ReaderScale(val label: String) { FIT_SCREEN("Fit screen"), FIT_WIDTH("Fit width"), ORIGINAL("Original") }
 enum class ReaderBackground(val label: String) { BLACK("Black"), WHITE("White"), GRAY("Gray") }
 enum class ReaderTapZones(val label: String) { OFF("Off"), ON("On"), INVERTED("Inverted") }
@@ -63,4 +73,26 @@ class ReaderPrefs(private val sp: SharedPreferences) {
     private val _bright = MutableStateFlow(sp.getFloat("rd_bright", -1f))
     val brightness: StateFlow<Float> = _bright
     fun setBrightness(v: Float) { _bright.value = v; sp.edit().putFloat("rd_bright", v).apply() }
+
+    private val _dual = MutableStateFlow(enumOf(sp.getString("rd_dual", null), ReaderDualPage.LANDSCAPE))
+    val dualPage: StateFlow<ReaderDualPage> = _dual
+    fun setDualPage(v: ReaderDualPage) { _dual.value = v; sp.edit().putString("rd_dual", v.name).apply() }
+
+    /** Show the first page (cover) alone in dual-page spreads. */
+    private val _dualCover = MutableStateFlow(sp.getBoolean("rd_dualcover", true))
+    val dualCoverAlone: StateFlow<Boolean> = _dualCover
+    fun setDualCoverAlone(v: Boolean) { _dualCover.value = v; sp.edit().putBoolean("rd_dualcover", v).apply() }
+
+    private val _orient = MutableStateFlow(enumOf(sp.getString("rd_orient", null), ReaderOrientation.FREE))
+    val orientation: StateFlow<ReaderOrientation> = _orient
+    fun setOrientation(v: ReaderOrientation) { _orient.value = v; sp.edit().putString("rd_orient", v.name).apply() }
+
+    private val _crop = MutableStateFlow(sp.getBoolean("rd_crop", false))
+    val cropBorders: StateFlow<Boolean> = _crop
+    fun setCropBorders(v: Boolean) { _crop.value = v; sp.edit().putBoolean("rd_crop", v).apply() }
+
+    /** Auto-scroll speed for continuous modes, in dp per second. */
+    private val _autoSpeed = MutableStateFlow(sp.getFloat("rd_autospeed", 60f))
+    val autoScrollSpeed: StateFlow<Float> = _autoSpeed
+    fun setAutoScrollSpeed(v: Float) { _autoSpeed.value = v; sp.edit().putFloat("rd_autospeed", v).apply() }
 }

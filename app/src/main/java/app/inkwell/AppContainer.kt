@@ -28,6 +28,8 @@ class AppContainer(context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    val updater = app.inkwell.data.AppUpdater(context.applicationContext, httpClient)
+
     val registry = SourceRegistry(
         listOf(
             MangaDexSource(httpClient) { settings.lang.value },

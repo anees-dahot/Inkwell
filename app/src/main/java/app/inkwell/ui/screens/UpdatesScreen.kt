@@ -39,21 +39,7 @@ import app.inkwell.ui.theme.LocalInk
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.util.Date
-
-fun relativeDate(millis: Long?): String {
-    if (millis == null) return ""
-    val diff = System.currentTimeMillis() - millis
-    val min = diff / 60_000
-    return when {
-        min < 1 -> "Just now"
-        min < 60 -> "${min}m ago"
-        min < 60 * 24 -> "${min / 60}h ago"
-        min < 60 * 24 * 7 -> "${min / (60 * 24)}d ago"
-        else -> DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(millis))
-    }
-}
+import app.inkwell.ui.util.relativeDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,7 +122,7 @@ fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit, onOp
                             Text(r.name, style = InkType.callout, color = ink.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Spacer(Modifier.width(8.dp))
-                        Text(relativeDate(r.dateMillis), style = InkType.caption, color = ink.secondary)
+                        Text(r.dateMillis?.let { relativeDate(it) } ?: "", style = InkType.caption, color = ink.secondary)
                     }
                     Hairline(startInset = 72.dp)
                     }

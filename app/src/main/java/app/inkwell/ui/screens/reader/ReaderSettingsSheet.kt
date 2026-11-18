@@ -1,6 +1,9 @@
 package app.inkwell.ui.screens.reader
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,19 +54,48 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, prefs: ReaderPrefs, onDismiss: () -
     val volume by prefs.volumeKeys.collectAsStateWithLifecycle()
     val gap by prefs.webtoonGap.collectAsStateWithLifecycle()
     val bright by ReaderSession.brightness.collectAsStateWithLifecycle()
+    val dual by prefs.dualPage.collectAsStateWithLifecycle()
+    val coverAlone by prefs.dualCoverAlone.collectAsStateWithLifecycle()
+    val orient by prefs.orientation.collectAsStateWithLifecycle()
+    val crop by prefs.cropBorders.collectAsStateWithLifecycle()
+    val speed by prefs.autoScrollSpeed.collectAsStateWithLifecycle()
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ink.bg) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text("Reader", color = ink.label, style = InkType.title, modifier = Modifier.padding(bottom = 8.dp))
             Section("READING MODE (THIS TITLE)") {
-                SegmentedControl(ReaderViewMode.entries.map { it.label }, mode.ordinal, { vm.setTitleMode(ReaderViewMode.entries[it]) })
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReaderViewMode.entries.forEach { m ->
+                        val sel = m == mode
+                        Text(
+                            m.label, color = if (sel) ink.bg else ink.label, style = InkType.callout,
+                            modifier = Modifier.clip(RoundedCornerShape(50))
+                                .background(if (sel) ink.accent else ink.label.copy(alpha = 0.08f))
+                                .pressable { vm.setTitleMode(m) }.padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Use for all titles", color = ink.accent, style = InkType.callout, modifier = Modifier.pressable { vm.setDefaultMode(mode) }.padding(vertical = 4.dp))
                     Text("Reset to default", color = ink.accent, style = InkType.callout, modifier = Modifier.pressable { vm.resetTitleMode() }.padding(vertical = 4.dp))
                 }
             }
-            if (mode != ReaderViewMode.WEBTOON) Section("SCALE") {
+            if (mode.pagedHorizontal || mode == ReaderViewMode.VERTICAL) Section("SCALE") {
                 SegmentedControl(ReaderScale.entries.map { it.label }, scale.ordinal, { prefs.setScale(ReaderScale.entries[it]) })
+            }
+            if (mode.pagedHorizontal) Section("DUAL PAGE") {
+                SegmentedControl(ReaderDualPage.entries.map { it.label }, dual.ordinal, { prefs.setDualPage(ReaderDualPage.entries[it]) })
+                if (dual != ReaderDualPage.OFF) SwitchRow("Show first page alone", coverAlone, prefs::setDualCoverAlone)
+            }
+            Section("ORIENTATION") {
+                SegmentedControl(ReaderOrientation.entries.map { it.label }, orient.ordinal, { prefs.setOrientation(ReaderOrientation.entries[it]) })
+            }
+            if (mode.continuousVertical || mode.continuousHorizontal) Section("AUTO-SCROLL SPEED") {
+                Slider(
+                    value = speed, onValueChange = prefs::setAutoScrollSpeed, valueRange = 15f..300f,
+                    colors = SliderDefaults.colors(thumbColor = androidx.compose.ui.graphics.Color.White, activeTrackColor = ink.accent),
+                )
             }
             Section("BACKGROUND") {
                 SegmentedControl(ReaderBackground.entries.map { it.label }, bg.ordinal, { prefs.setBackground(ReaderBackground.entries[it]) })
@@ -73,9 +105,10 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, prefs: ReaderPrefs, onDismiss: () -
             }
             Section("DISPLAY") {
                 SwitchRow("Keep screen on", keepOn, prefs::setKeepScreenOn)
+                if (!mode.continuousVertical) SwitchRow("Crop borders", crop, prefs::setCropBorders)
                 SwitchRow("Page number overlay", pageNum, prefs::setPageNumber)
                 SwitchRow("Volume keys turn pages", volume, prefs::setVolumeKeys)
-                if (mode == ReaderViewMode.WEBTOON) SwitchRow("Gap between pages", gap, prefs::setWebtoonGap)
+                if (mode == ReaderViewMode.WEBTOON || mode.continuousHorizontal) SwitchRow("Gap between pages", gap, prefs::setWebtoonGap)
                 SwitchRow("Custom brightness", bright >= 0f) { ReaderSession.brightness.value = if (it) 0.5f else -1f }
                 if (bright >= 0f) Slider(
                     value = bright, onValueChange = { ReaderSession.brightness.value = it.coerceAtLeast(0.01f) }, valueRange = 0.01f..1f,

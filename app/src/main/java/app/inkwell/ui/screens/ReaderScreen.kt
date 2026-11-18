@@ -17,6 +17,26 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.ScreenRotation
+import androidx.compose.material.icons.outlined.StayCurrentLandscape
+import androidx.compose.material.icons.outlined.StayCurrentPortrait
+import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.outlined.ViewCarousel
+import androidx.compose.material.icons.outlined.ViewColumn
+import androidx.compose.material.icons.outlined.ViewDay
+import androidx.compose.material.icons.outlined.ViewStream
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.sp
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import app.inkwell.data.ReaderDualPage
+import app.inkwell.data.ReaderOrientation
+import app.inkwell.ui.util.relativeDate
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -71,6 +91,9 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
     val prefs = LocalContainer.current.settings.reader
     var overlay by rememberSaveable { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
+    var showChapters by remember { mutableStateOf(false) }
+    var showModes by remember { mutableStateOf(false) }
+    var autoScroll by remember { mutableStateOf(false) }
     var actionPage by remember { mutableStateOf<RItem.Pg?>(null) }
     val hazeState = remember { HazeState() }
     val activity = LocalActivity.current
@@ -88,7 +111,14 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
     val volumeKeys by prefs.volumeKeys.collectAsStateWithLifecycle()
     val gap by prefs.webtoonGap.collectAsStateWithLifecycle()
     val brightness by ReaderSession.brightness.collectAsStateWithLifecycle()
-    val cfg = ReaderConfig(scale, bgPref, tapZones, gap)
+    val dualPref by prefs.dualPage.collectAsStateWithLifecycle()
+    val coverAlone by prefs.dualCoverAlone.collectAsStateWithLifecycle()
+    val orient by prefs.orientation.collectAsStateWithLifecycle()
+    val crop by prefs.cropBorders.collectAsStateWithLifecycle()
+    val autoSpeed by prefs.autoScrollSpeed.collectAsStateWithLifecycle()
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val dual = dualPref == ReaderDualPage.ALWAYS || (dualPref == ReaderDualPage.LANDSCAPE && landscape)
+    val cfg = ReaderConfig(scale, bgPref, tapZones, gap, crop)
     val bgColor = when (bgPref) { ReaderBackground.BLACK -> Color.Black; ReaderBackground.WHITE -> Color.White; ReaderBackground.GRAY -> Color(0xFF3A3A3C) }
 
     // dark status bar icons while reading, restore on exit
@@ -100,6 +130,15 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
             ctl?.show(WindowInsetsCompat.Type.systemBars())
             if (prevLight != null) ctl.isAppearanceLightStatusBars = prevLight
         }
+    }
+    DisposableEffect(orient) {
+        val a = activity
+        a?.requestedOrientation = when (orient) {
+            ReaderOrientation.FREE -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ReaderOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            ReaderOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        onDispose { a?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
     DisposableEffect(keepOn) {
         view.keepScreenOn = keepOn
@@ -139,7 +178,7 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
             vm.loading || mode == null || items.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Box(Modifier.fillMaxWidth().aspectRatio(0.7f).shimmer())
             }
-            else -> key(vm.generation, mode) {
+            else -> key(vm.generation, mode, dual && mode.pagedHorizontal) {
                 // Switching reading mode rebuilds this block: resume at the page being viewed, not the saved one.
                 val startIdx = remember { (if (carry[0] == vm.generation) carry[1] else vm.initialItem).coerceIn(0, items.lastIndex) }
                 var curIdx by remember { mutableIntStateOf(startIdx) }
@@ -169,22 +208,36 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                     val loader = SingletonImageLoader.get(context)
                     val original = scale == app.inkwell.data.ReaderScale.ORIGINAL
                     for (i in 1..4) (vm.items.getOrNull(curIdx + i) as? RItem.Pg)?.let {
-                        if (mode == ReaderViewMode.WEBTOON) prefetchPage(context, it.page.imageUrl)
-                        else loader.enqueue(pageRequest(context, it.page.imageUrl, original))
+                        if (mode.continuousVertical) prefetchPage(context, it.page.imageUrl)
+                        else loader.enqueue(pageRequest(context, it.page.imageUrl, original && !mode.continuousHorizontal, crop))
                     }
                 }
                 LaunchedEffect(curIdx) { if (cur is RItem.Pg && cur.idx == cur.total - 1 && cur.total > 1) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
 
                 Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
-                    if (mode == ReaderViewMode.WEBTOON) WebtoonReader(
-                        vm, startIdx, seekTo, cfg, nav, { overlay = !overlay },
-                        onVisible = { f, l -> curIdx = f; lastIdx = l },
-                        onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
-                    ) else PagedReader(
-                        vm, vertical = mode == ReaderViewMode.VERTICAL, rtl = mode == ReaderViewMode.RTL, startIndex = startIdx,
-                        seekTo = seekTo, cfg = cfg, nav = nav, toggle = { overlay = !overlay },
-                        onIndex = { curIdx = it; lastIdx = it }, onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
-                    )
+                    val scrolling = autoScroll && !overlay
+                    when {
+                        mode.continuousVertical -> WebtoonReader(
+                            vm, startIdx, seekTo, cfg, nav, { overlay = !overlay },
+                            onVisible = { f, l -> curIdx = f; lastIdx = l },
+                            onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
+                            gapDp = if (mode == ReaderViewMode.LONG_STRIP) 16.dp else if (gap) 8.dp else 0.dp,
+                            sidePadding = if (mode == ReaderViewMode.LONG_STRIP && landscape) 64.dp else 0.dp,
+                            autoScroll = scrolling, speedDp = autoSpeed,
+                        )
+                        mode.continuousHorizontal -> HorizontalStripReader(
+                            vm, rtl = mode.rtl, startIndex = startIdx, seekTo = seekTo, cfg = cfg, nav = nav, toggle = { overlay = !overlay },
+                            onVisible = { f, l -> curIdx = f; lastIdx = l },
+                            onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
+                            autoScroll = scrolling, speedDp = autoSpeed,
+                        )
+                        else -> PagedReader(
+                            vm, vertical = mode == ReaderViewMode.VERTICAL, rtl = mode.rtl, startIndex = startIdx,
+                            seekTo = seekTo, cfg = cfg, nav = nav, toggle = { overlay = !overlay },
+                            onIndex = { f, l -> curIdx = f; lastIdx = l }, onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
+                            dual = dual && mode.pagedHorizontal, coverAlone = coverAlone,
+                        )
+                    }
                 }
 
                 // page number overlay while bars are hidden
@@ -212,7 +265,8 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                                 BarIconButton(Icons.AutoMirrored.Outlined.ArrowBackIos, "Back", Color.White, onBack)
                                 Column(Modifier.weight(1f)) {
                                     Text(vm.entry?.title ?: "", color = Color.White, style = InkType.callout, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(curEp.name, color = Color.White.copy(alpha = 0.6f), style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    val sub = listOfNotNull(curEp.name, curEp.dateMillis?.let { relativeDate(it) }, curEp.scanlator).joinToString(" · ")
+                                    Text(sub, color = Color.White.copy(alpha = 0.6f), style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 BarIconButton(Icons.Outlined.Tune, "Reader settings", Color.White) { showSettings = true }
                             }
@@ -224,42 +278,81 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                     enter = (if (reduced) fadeIn() else slideInVertically(slide) { it } + fadeIn()),
                     exit = (if (reduced) fadeOut() else slideOutVertically(slide) { it } + fadeOut()),
                 ) {
-                    Box(Modifier.fillMaxWidth()) {
-                        Box(Modifier.matchParentSize().glass(hazeState, dark = true))
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            var sliding by remember { mutableStateOf<Float?>(null) }
-                            val prev = vm.prevOf(curEp)
-                            val next = vm.nextOf(curEp)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                BarIconButton(Icons.Outlined.SkipPrevious, "Previous chapter", if (prev != null) Color.White else Color.White.copy(0.3f)) { prev?.let { vm.open(it.id) } }
-                                CompositionLocalProvider(LocalLayoutDirection provides if (mode == ReaderViewMode.RTL) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                                    Slider(
-                                        value = sliding ?: page.toFloat(),
-                                        onValueChange = { sliding = it },
-                                        onValueChangeFinished = { sliding?.let { seekTo = chapterStart + it.toInt().coerceIn(0, total - 1) }; sliding = null },
-                                        valueRange = 0f..(total - 1).coerceAtLeast(1).toFloat(),
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = Color.White, activeTrackColor = ink.accent, inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-                                        ),
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                                BarIconButton(Icons.Outlined.SkipNext, "Next chapter", if (next != null) Color.White else Color.White.copy(0.3f)) {
-                                    next?.let { n ->
-                                        val at = items.indexOfFirst { it is RItem.Pg && it.ep.id == n.id && it.idx == 0 }
-                                        if (at >= 0) seekTo = at else vm.open(n.id)
-                                    }
+                    val shape = RoundedCornerShape(24.dp)
+                    Column(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 10.dp)
+                            .widthIn(max = 640.dp).clip(shape).glass(hazeState, dark = true)
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                    ) {
+                        var sliding by remember { mutableStateOf<Float?>(null) }
+                        val prev = vm.prevOf(curEp)
+                        val next = vm.nextOf(curEp)
+                        val shown = (sliding?.toInt() ?: page) + 1
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            BarIconButton(Icons.Outlined.SkipPrevious, "Previous chapter", if (prev != null) Color.White else Color.White.copy(0.3f)) { prev?.let { vm.open(it.id) } }
+                            Text(
+                                "$shown", color = Color.White, style = InkType.caption,
+                                modifier = Modifier.widthIn(min = 28.dp), maxLines = 1,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                            CompositionLocalProvider(LocalLayoutDirection provides if (mode.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                                Slider(
+                                    value = sliding ?: page.toFloat(),
+                                    onValueChange = { sliding = it },
+                                    onValueChangeFinished = { sliding?.let { seekTo = chapterStart + it.toInt().coerceIn(0, total - 1) }; sliding = null },
+                                    valueRange = 0f..(total - 1).coerceAtLeast(1).toFloat(),
+                                    steps = (total - 2).coerceIn(0, 60),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.White, activeTrackColor = ink.accent, inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                                        activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent,
+                                    ),
+                                    modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                                )
+                            }
+                            Text(
+                                "$total", color = Color.White.copy(alpha = 0.6f), style = InkType.caption,
+                                modifier = Modifier.widthIn(min = 28.dp), maxLines = 1,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                            BarIconButton(Icons.Outlined.SkipNext, "Next chapter", if (next != null) Color.White else Color.White.copy(0.3f)) {
+                                next?.let { n ->
+                                    val at = items.indexOfFirst { it is RItem.Pg && it.ep.id == n.id && it.idx == 0 }
+                                    if (at >= 0) seekTo = at else vm.open(n.id)
                                 }
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${(sliding?.toInt() ?: page) + 1} / $total", color = Color.White.copy(alpha = 0.8f), style = InkType.caption, modifier = Modifier.padding(start = 8.dp).weight(1f))
-                                Text(mode.label, color = ink.accent, style = InkType.callout, modifier = Modifier.pressable { showSettings = true }.padding(horizontal = 12.dp, vertical = 8.dp))
+                        }
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(0.5.dp).background(Color.White.copy(alpha = 0.12f)))
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            BarAction(modeIcon(mode), mode.label) { showModes = true }
+                            BarAction(
+                                when (orient) {
+                                    ReaderOrientation.FREE -> Icons.Outlined.ScreenRotation
+                                    ReaderOrientation.PORTRAIT -> Icons.Outlined.StayCurrentPortrait
+                                    ReaderOrientation.LANDSCAPE -> Icons.Outlined.StayCurrentLandscape
+                                },
+                                orient.label,
+                            ) { prefs.setOrientation(ReaderOrientation.entries[(orient.ordinal + 1) % ReaderOrientation.entries.size]) }
+                            if (!mode.continuousVertical) BarAction(Icons.Outlined.Crop, "Crop", active = crop) {
+                                prefs.setCropBorders(!crop)
                             }
-                            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                            if (mode.continuousVertical || mode.continuousHorizontal) BarAction(
+                                if (autoScroll) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, "Auto", active = autoScroll,
+                            ) { autoScroll = !autoScroll; if (autoScroll) overlay = false }
+                            BarAction(Icons.AutoMirrored.Outlined.List, "Chapters") { showChapters = true }
+                            BarAction(Icons.Outlined.Tune, "Settings") { showSettings = true }
                         }
                     }
                 }
+                if (showChapters) ChapterListSheet(vm, curEp.id, onDismiss = { showChapters = false }) { ep ->
+                    showChapters = false
+                    val at = items.indexOfFirst { it is RItem.Pg && it.ep.id == ep.id && it.idx == 0 }
+                    if (at >= 0) seekTo = at else vm.open(ep.id)
+                }
             }
+        }
+        if (showModes) ModePickerSheet(vm.mode ?: ReaderViewMode.LTR, onDismiss = { showModes = false }) { m ->
+            showModes = false
+            vm.setTitleMode(m)
         }
         if (showSettings) ReaderSettingsSheet(vm, prefs) { showSettings = false }
         actionPage?.let { pg ->
@@ -284,5 +377,97 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                 }
             }
         }
+    }
+}
+
+fun modeIcon(m: ReaderViewMode): ImageVector = when (m) {
+    ReaderViewMode.LTR, ReaderViewMode.RTL -> Icons.Outlined.ViewCarousel
+    ReaderViewMode.VERTICAL -> Icons.Outlined.SwapVert
+    ReaderViewMode.WEBTOON -> Icons.Outlined.ViewDay
+    ReaderViewMode.LONG_STRIP -> Icons.Outlined.ViewStream
+    ReaderViewMode.SCROLL_LTR, ReaderViewMode.SCROLL_RTL -> Icons.Outlined.ViewColumn
+}
+
+@Composable
+private fun BarAction(icon: ImageVector, label: String, active: Boolean = false, onClick: () -> Unit) {
+    val ink = LocalInk.current
+    val tint = if (active) ink.accent else Color.White
+    Column(
+        Modifier.widthIn(min = 56.dp).clip(RoundedCornerShape(14.dp)).pressable(onClick = onClick).padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
+        Text(label, color = tint.copy(alpha = if (active) 1f else 0.75f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModePickerSheet(current: ReaderViewMode, onDismiss: () -> Unit, onPick: (ReaderViewMode) -> Unit) {
+    val ink = LocalInk.current
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ink.bg) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text("Reading mode", color = ink.label, style = InkType.title, modifier = Modifier.padding(bottom = 4.dp))
+            Text("Saved for this title", color = ink.secondary, style = InkType.caption, modifier = Modifier.padding(bottom = 12.dp))
+            ReaderViewMode.entries.forEach { m ->
+                val sel = m == current
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(if (sel) ink.accent.copy(alpha = 0.14f) else Color.Transparent)
+                        .pressable { onPick(m) }.padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(modeIcon(m), null, tint = if (sel) ink.accent else ink.secondary, modifier = Modifier.size(22.dp))
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text(m.label, color = if (sel) ink.accent else ink.label, style = InkType.body)
+                        Text(modeHint(m), color = ink.secondary, style = InkType.caption)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun modeHint(m: ReaderViewMode) = when (m) {
+    ReaderViewMode.LTR -> "One page at a time, swipe left"
+    ReaderViewMode.RTL -> "One page at a time, manga style"
+    ReaderViewMode.VERTICAL -> "One page at a time, swipe up"
+    ReaderViewMode.WEBTOON -> "Continuous vertical, no gaps"
+    ReaderViewMode.LONG_STRIP -> "Continuous vertical with page gaps"
+    ReaderViewMode.SCROLL_LTR -> "Continuous sideways scroll"
+    ReaderViewMode.SCROLL_RTL -> "Continuous sideways scroll, manga style"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChapterListSheet(vm: ReaderViewModel, currentId: String, onDismiss: () -> Unit, onPick: (app.inkwell.data.model.Episode) -> Unit) {
+    val ink = LocalInk.current
+    val eps = vm.episodes
+    val curIndex = eps.indexOfFirst { it.id == currentId }.coerceAtLeast(0)
+    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (curIndex - 3).coerceAtLeast(0))
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ink.bg) {
+        Text(
+            "Chapters (${eps.size})", color = ink.label, style = InkType.title,
+            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+        )
+        androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+            items(eps.size, key = { eps[it].id }) { i ->
+                val ep = eps[i]
+                val sel = ep.id == currentId
+                Row(
+                    Modifier.fillMaxWidth().background(if (sel) ink.accent.copy(alpha = 0.12f) else Color.Transparent)
+                        .pressable { onPick(ep) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(ep.name, color = if (sel) ink.accent else ink.label, style = InkType.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val meta = listOfNotNull(ep.dateMillis?.let { relativeDate(it) }, ep.scanlator).joinToString(" · ")
+                        if (meta.isNotEmpty()) Text(meta, color = ink.secondary, style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (sel) Text("Reading", color = ink.accent, style = InkType.caption)
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }

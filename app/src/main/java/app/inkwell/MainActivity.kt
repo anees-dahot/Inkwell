@@ -58,6 +58,7 @@ class MainActivity : FragmentActivity() {
         readReduced()
         AppLaunch.handle(intent)
         locked = lockWanted()
+        container.updater.autoCheckOnStart()
         setContent {
             val theme by container.settings.theme.collectAsStateWithLifecycle()
             val dark = when (theme) {
@@ -91,6 +92,7 @@ class MainActivity : FragmentActivity() {
                     Box(Modifier.fillMaxSize()) {
                         if (onboarded) AppNav() else OnboardingScreen(onDone = { })
                         if (incognito) IncognitoPill(Modifier.align(Alignment.TopCenter))
+                        if (onboarded && !locked) app.inkwell.ui.components.UpdateDialog(container.updater)
                         if (locked) LockScreen(onUnlock = { promptUnlock() })
                     }
                 }

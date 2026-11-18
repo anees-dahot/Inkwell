@@ -14,8 +14,8 @@ android {
         applicationId = "app.inkwell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 130
-        versionName = "1.3.0"
+        versionCode = 140
+        versionName = "1.4.0"
     }
     val ksProps = Properties().apply {
         rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
@@ -39,7 +39,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }

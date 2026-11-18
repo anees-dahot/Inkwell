@@ -241,10 +241,38 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
             item {
                 GroupedCard {
                     Column(Modifier.padding(16.dp)) {
-                        Text("Inkwell 0.1", style = InkType.headline, color = ink.label)
+                        Text("Inkwell ${app.inkwell.BuildConfig.VERSION_NAME}", style = InkType.headline, color = ink.label)
                         Spacer(Modifier.height(4.dp))
                         Text("Content provided by MangaDex and official YouTube uploads.", style = InkType.callout, color = ink.secondary)
                     }
+                }
+            }
+            item { SectionHeader("Updates") }
+            item {
+                val updater = LocalContainer.current.updater
+                val st by updater.state.collectAsStateWithLifecycle()
+                val auto by updater.autoCheck.collectAsStateWithLifecycle()
+                val status = when (val u = st) {
+                    is app.inkwell.data.UpdateState.Idle -> "Tap to check for a new version"
+                    is app.inkwell.data.UpdateState.Checking -> "Checking..."
+                    is app.inkwell.data.UpdateState.UpToDate -> "You're on the latest version"
+                    is app.inkwell.data.UpdateState.Available -> "Version ${u.info.version} available"
+                    is app.inkwell.data.UpdateState.Downloading -> "Downloading ${(u.progress * 100).toInt()}%"
+                    is app.inkwell.data.UpdateState.ReadyToInstall -> "Ready to install"
+                    is app.inkwell.data.UpdateState.Error -> u.message
+                }
+                GroupedCard {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text("Version ${app.inkwell.BuildConfig.VERSION_NAME}", style = InkType.body, color = ink.label)
+                        Text(status, style = InkType.caption, color = ink.secondary)
+                    }
+                    Hairline()
+                    ActionRow(if (st is app.inkwell.data.UpdateState.Available) "View update" else "Check for updates") {
+                        if (st is app.inkwell.data.UpdateState.Available || st is app.inkwell.data.UpdateState.ReadyToInstall) updater.showDialog()
+                        else updater.check()
+                    }
+                    Hairline()
+                    ToggleRow("Check for updates automatically", auto) { updater.setAutoCheck(it) }
                 }
             }
         }

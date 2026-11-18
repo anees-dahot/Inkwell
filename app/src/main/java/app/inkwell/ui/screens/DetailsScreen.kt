@@ -1,5 +1,6 @@
 package app.inkwell.ui.screens
 
+import app.inkwell.ui.util.relativeDate
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Intent
 import android.net.Uri
@@ -351,10 +352,15 @@ fun DetailsScreen(
             }
             stickyHeader(key = "chapters-header") {
                 Row(Modifier.fillMaxWidth().background(ink.bg).padding(top = stickyTop).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        (if (vm.isVideo) "Episodes" else "Chapters") + if (vm.episodes.isNotEmpty()) " (${vm.episodes.size})" else "",
-                        style = InkType.headline, color = ink.label, modifier = Modifier.weight(1f),
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            (if (vm.isVideo) "Episodes" else "Chapters") + if (vm.episodes.isNotEmpty()) " (${vm.episodes.size})" else "",
+                            style = InkType.headline, color = ink.label,
+                        )
+                        vm.episodes.mapNotNull { it.dateMillis }.maxOrNull()?.let {
+                            Text("Updated ${relativeDate(it)}", style = InkType.caption, color = ink.secondary)
+                        }
+                    }
                     if (vm.episodes.isNotEmpty()) {
                         Box {
                             BarIconButton(Icons.Outlined.FilterList, "Sort and filter", tint = if (vm.onlyUnread || vm.onlyDownloaded || !vm.newestFirst) ink.accent else ink.secondary) { menu = "filter" }
