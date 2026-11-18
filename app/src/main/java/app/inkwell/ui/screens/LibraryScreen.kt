@@ -93,12 +93,12 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
     val hasUncategorized = remember(items) { items.any { it.categoryId == 0L } }
     val shown = remember(items, filter, catSel, query, sort, asc, unreadMap, lastRead) {
         val typeName = when (filter) {
-            1 -> ContentType.MANGA.name; 2 -> ContentType.NOVEL.name; 3 -> ContentType.VIDEO.name
+            1 -> ContentType.MANGA.name; 2 -> ContentType.NOVEL.name
             else -> null
         }
         val q = query.trim()
         val base = items.filter {
-            (typeName == null || it.type == typeName) && (catSel < 0 || it.categoryId == catSel) &&
+            it.type != ContentType.VIDEO.name && (typeName == null || it.type == typeName) && (catSel < 0 || it.categoryId == catSel) &&
                 (q.isEmpty() || it.title.contains(q, ignoreCase = true))
         }
         sortLibrary(base, sort, asc, unreadMap, lastRead)
@@ -164,7 +164,7 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
                         SearchField(query, { query = it }, "Search library")
                         Spacer(Modifier.height(10.dp))
                     }
-                    SegmentedControl(listOf("All", "Manga", "Novels", "Donghua"), filter, { filter = it })
+                    SegmentedControl(listOf("All", "Manga", "Novels"), filter, { filter = it })
                     if (categories.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -328,7 +328,7 @@ private fun LibraryListRow(e: Entry, badge: Int, selected: Boolean, onClick: () 
         Column(Modifier.weight(1f)) {
             Text(e.title, style = InkType.headline, color = ink.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
-                when (e.type) { ContentType.MANGA -> "Manga"; ContentType.NOVEL -> "Novel"; else -> "Donghua" },
+                when (e.type) { ContentType.NOVEL -> "Novel"; else -> "Manga" },
                 style = InkType.caption, color = ink.secondary,
             )
         }

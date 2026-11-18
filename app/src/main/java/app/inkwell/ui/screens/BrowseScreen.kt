@@ -37,6 +37,11 @@ import app.inkwell.AppContainer
 import app.inkwell.data.model.ContentType
 import app.inkwell.data.model.Entry
 import app.inkwell.data.source.ScraperSource
+import app.inkwell.data.source.fanOut
+import app.inkwell.data.source.ResultCache
+import app.inkwell.data.source.SourceHealth
+import app.inkwell.data.source.interleave
+import app.inkwell.data.source.titleKey
 import app.inkwell.ui.components.*
 import app.inkwell.ui.motion.pressable
 import app.inkwell.ui.theme.InkType
@@ -49,48 +54,79 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class BrowseViewModel(private val c: AppContainer) : ViewModel() {
-    var sourceId by mutableStateOf(initialSource(c)); private set
-    var type by mutableStateOf(c.registry.find(sourceId)?.type ?: c.registry.sources.first().type); private set
-    var recents by mutableStateOf(c.settings.recentSources(c.registry.find(sourceId)?.type?.name ?: "MANGA")); private set
+    /** Null = all sources of [type] combined. */
+    var sourceId by mutableStateOf<String?>(null); private set
+    var type by mutableStateOf(initialType(c)); private set
+    var recents by mutableStateOf(c.settings.recentSources(type.name)); private set
     var tab by mutableIntStateOf(0); private set
     var query by mutableStateOf(""); private set
     var items by mutableStateOf(emptyList<Entry>()); private set
+    /** "sourceId/entryId" -> other source ids carrying the same title. */
+    var also by mutableStateOf<Map<String, List<String>>>(emptyMap()); private set
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     var hasNext by mutableStateOf(false); private set
-    var addError by mutableStateOf<String?>(null); private set
-    var adding by mutableStateOf(false); private set
+    var progress by mutableStateOf(0 to 0); private set
+    var skipped by mutableIntStateOf(0); private set
+    private var force = false
 
     private var page = 1
     private var gen = 0
     private var job: Job? = null
     private var searchJob: Job? = null
+    private var moreSources: Set<String>? = null
 
     init { reload() }
 
     fun sourcesFor(t: ContentType) = c.registry.sources.filter { it.type == t }
     fun selectType(t: ContentType) {
         if (t == type) return
-        type = t
-        val list = sourcesFor(t)
-        val first = list.firstOrNull { it.id == c.settings.lastSource(t.name) } ?: list.firstOrNull() ?: return
-        sourceId = first.id; query = ""; tab = 0; recents = c.settings.recentSources(t.name); reload()
+        type = t; sourceId = null; query = ""; tab = 0
+        c.settings.defaultBrowseType = t.name
+        recents = c.settings.recentSources(t.name); reload()
     }
-    fun selectSource(id: String) {
+    fun selectSource(id: String?) {
         if (id == sourceId) return
-        sourceId = id; query = ""
-        c.settings.rememberSource(type.name, id); recents = c.settings.recentSources(type.name)
+        sourceId = id
+        if (id != null) { c.settings.rememberSource(type.name, id); recents = c.settings.recentSources(type.name) }
         reload()
     }
     fun selectTab(t: Int) { if (t != tab) { tab = t; reload() } }
     fun updateQuery(q: String) {
         query = q
         searchJob?.cancel()
-        searchJob = viewModelScope.launch { delay(400); reload() }
+        searchJob = viewModelScope.launch { delay(500); reload() }
     }
 
-    fun reload() { page = 1; items = emptyList(); hasNext = false; load() }
+    fun refresh() { force = true; reload() }
+    fun retrySkipped() { SourceHealth.resetAll(); refresh() }
+    fun reload() { page = 1; items = emptyList(); also = emptyMap(); hasNext = false; moreSources = null; load() }
     fun loadMore() { if (!loading && hasNext && error == null) load() }
+
+    private suspend fun fetch(src: app.inkwell.data.model.Source, p: Int): app.inkwell.data.model.PagedResult<Entry> {
+        val q = query.trim()
+        val key = src.id + "|" + (if (q.isNotEmpty()) "s:$q" else if (tab == 0) "p" else "l") + "|" + p
+        return ResultCache.cached(key, force) {
+            when {
+                q.isNotEmpty() -> src.search(q, p)
+                tab == 0 -> src.popular(p)
+                else -> src.latest(p)
+            }
+        }
+    }
+
+    /** Pinned, then recently used, then fastest; benched (repeatedly failing) sources dropped. */
+    private fun ordered(): List<app.inkwell.data.model.Source> {
+        val pinned = c.repo.prefs.pinned.value
+        val all = sourcesFor(type)
+        val live = all.filter { it.id in pinned || !SourceHealth.benched(it.id) }
+        skipped = all.size - live.size
+        return live.sortedWith(compareBy(
+            { if (it.id in pinned) 0 else if (it.id in recents) 1 else 2 },
+            { recents.indexOf(it.id).let { i -> if (i < 0) Int.MAX_VALUE else i } },
+            { SourceHealth.avgMs(it.id) },
+        ))
+    }
 
     private fun load() {
         job?.cancel()
@@ -98,56 +134,66 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
         job = viewModelScope.launch {
             loading = true; error = null
             try {
-                val src = c.registry.get(sourceId)
-                val r = when {
-                    query.isNotBlank() -> src.search(query.trim(), page)
-                    tab == 0 -> src.popular(page)
-                    else -> src.latest(page)
-                }
-                if (my == gen) {
-                    val seen = items.map { it.id }.toHashSet()
-                    items = items + r.items.filter { seen.add(it.id) }
-                    hasNext = r.hasNext; page++
-                }
+                val single = sourceId
+                if (single != null) {
+                    val r = fetch(c.registry.get(single), page)
+                    if (my == gen) {
+                        val seen = items.map { it.id }.toHashSet()
+                        items = items + r.items.filter { seen.add(it.id) }
+                        hasNext = r.hasNext; page++
+                    }
+                } else loadAll(my)
+                force = false
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (my == gen) error = e.message ?: "Something went wrong" }
             finally { if (my == gen) loading = false }
         }
     }
 
-    fun addChannel(url: String, done: () -> Unit) {
-        viewModelScope.launch {
-            adding = true; addError = null
-            try { c.youtube.addCustom(url); done(); reload() }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { addError = e.message ?: "Could not add" }
-            finally { adding = false }
+    private suspend fun loadAll(my: Int) {
+        val srcs = ordered().filter { moreSources == null || it.id in moreSources!! }
+        val order = srcs.map { it.id }
+        val before = items
+        val baseSeen = HashMap<String, Entry>().apply { before.forEach { put(titleKey(it.title).ifEmpty { it.sourceId + it.id }, it) } }
+        val baseAlso = also.mapValues { it.value.toMutableList() }
+        val batches = HashMap<String, List<Entry>>()
+        val next = HashSet<String>()
+        var failed = 0
+        progress = 0 to srcs.size
+        fanOut(srcs, parallel = 10, timeoutMs = 12_000, op = { fetch(it, page) }) { src, r ->
+            if (my != gen) return@fanOut
+            if (r == null) failed++ else { batches[src.id] = r.items; if (r.hasNext) next += src.id }
+            val seen = HashMap(baseSeen)
+            val al = HashMap<String, MutableList<String>>().apply { baseAlso.forEach { (k, v) -> put(k, v.toMutableList()) } }
+            items = before + interleave(order, batches, seen, al)
+            also = al
+            progress = (progress.first + 1) to srcs.size
         }
+        if (my != gen) return
+        moreSources = next
+        hasNext = next.isNotEmpty(); page++
+        if (items.isEmpty() && failed == srcs.size && srcs.isNotEmpty()) error = "All sources failed. Check your connection."
     }
-    fun clearAddError() { addError = null }
 
-    fun removeIfCustom(entry: Entry) {
-        if (entry.sourceId != c.youtube.id) return
-        viewModelScope.launch { if (c.youtube.isCustom(entry.id)) { c.youtube.removeCustom(entry.id); reload() } }
+    fun sourceName(id: String) = c.registry.find(id)?.name?.substringBefore(" (") ?: id
+    fun label(e: Entry): String {
+        val more = also[e.sourceId + "/" + e.id]?.size ?: 0
+        return sourceName(e.sourceId) + if (more > 0) " +$more" else ""
     }
 }
 
-private fun initialSource(c: AppContainer): String {
-    val first = c.registry.sources.firstOrNull { it.type.name == c.settings.defaultBrowseType } ?: c.registry.sources.first()
-    return c.settings.lastSource(first.type.name)?.takeIf { c.registry.find(it) != null } ?: first.id
-}
+private fun initialType(c: AppContainer): ContentType =
+    runCatching { ContentType.valueOf(c.settings.defaultBrowseType ?: "MANGA") }.getOrDefault(ContentType.MANGA)
+        .takeIf { it != ContentType.VIDEO } ?: ContentType.MANGA
 
 @Composable
-fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onSearchAll: (ContentType, String) -> Unit = { _, _ -> }) {
+fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
     val c = LocalContainer.current
     val ink = LocalInk.current
     val vm = inkViewModel("browse") { BrowseViewModel(it) }
     val grid = rememberLazyGridState()
     val collapsed by grid.rememberCollapsed()
-    val haptic = LocalHapticFeedback.current
     OnTabReselect(2) { grid.animateScrollToItem(0) }
-    val sources = c.registry.sources
-    var showAdd by remember { mutableStateOf(false) }
 
     val nearEnd by remember {
         derivedStateOf {
@@ -173,73 +219,49 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onSearchAll: (Co
             item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     LargeTitle("Browse", Modifier)
-                    SearchField(vm.query, vm::updateQuery, if (vm.sourceId == c.youtube.id) "Filter titles" else "Search ${sources.first { it.id == vm.sourceId }.name}")
-                    if (vm.query.isNotBlank()) {
-                        FilledPill("Search all sources for \"${vm.query.trim()}\"", Modifier.fillMaxWidth(), filled = false) { onSearchAll(vm.type, vm.query.trim()) }
-                    }
-                    SegmentedControl(listOf("Manga", "Novels", "Donghua"), when (vm.type) { ContentType.MANGA -> 0; ContentType.NOVEL -> 1; else -> 2 }, { t -> vm.selectType(listOf(ContentType.MANGA, ContentType.NOVEL, ContentType.VIDEO)[t]) })
                     val typeSources = vm.sourcesFor(vm.type)
+                    val current = vm.sourceId?.let { id -> typeSources.firstOrNull { it.id == id } }
+                    SearchField(vm.query, vm::updateQuery, if (current == null) "Search all ${typeSources.size} sources" else "Search ${current.name.substringBefore(" (")}")
+                    SegmentedControl(listOf("Manga", "Novels"), if (vm.type == ContentType.NOVEL) 1 else 0, { t -> vm.selectType(if (t == 1) ContentType.NOVEL else ContentType.MANGA) })
                     if (typeSources.size > 1) {
-                        SourceSelector(typeSources.first { it.id == vm.sourceId }.let { it }, vm.recents.mapNotNull { id -> typeSources.firstOrNull { it.id == id } }, vm.sourceId, onPick = vm::selectSource, all = typeSources)
+                        SourceSelector(current, vm.recents.mapNotNull { id -> typeSources.firstOrNull { it.id == id } }, vm.sourceId, onPick = vm::selectSource, all = typeSources)
                     }
-                    if (vm.query.isBlank() && vm.sourceId != c.youtube.id) {
+                    if (vm.query.isBlank()) {
                         SegmentedControl(listOf("Popular", "Latest"), vm.tab, vm::selectTab)
                     }
-                    if (vm.sourceId == c.youtube.id) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            FilledPill("Add channel or playlist", filled = false) { showAdd = true }
-                        }
+                    val (done, total) = vm.progress
+                    if (vm.sourceId == null && vm.loading && total > 0) {
+                        Text("Loading $done of $total sources…", style = InkType.caption, color = ink.secondary)
+                    }
+                    if (vm.sourceId == null && vm.skipped > 0 && !vm.loading) {
+                        Text(
+                            "${vm.skipped} unresponsive sources skipped · Retry", style = InkType.caption, color = ink.accent,
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).pressable { vm.retrySkipped() }.padding(vertical = 4.dp),
+                        )
                     }
                 }
             }
+            val cfUrl = vm.sourceId?.let { (c.registry.find(it) as? ScraperSource)?.baseUrl }
             if (vm.error != null && vm.items.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) { ErrorState(vm.error!!, vm::reload, webViewUrl = (c.registry.find(vm.sourceId) as? ScraperSource)?.baseUrl) }
+                item(span = { GridItemSpan(maxLineSpan) }) { ErrorState(vm.error!!, vm::refresh, webViewUrl = cfUrl) }
             } else if (vm.loading && vm.items.isEmpty()) {
                 items(12) { SkeletonGridItem() }
             } else if (!vm.loading && vm.items.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(Icons.Outlined.SearchOff, "Nothing found.") }
             }
             items(vm.items, key = { it.sourceId + "/" + it.id }) { e ->
-                EntryGridItem(e, onLongClick = {
-                    if (e.type == ContentType.VIDEO) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); vm.removeIfCustom(e) }
-                }) { onOpen(e) }
+                EntryGridItem(e, subtitle = vm.label(e)) { onOpen(e) }
             }
             if (vm.loading && vm.items.isNotEmpty()) {
                 items(3) { SkeletonGridItem() }
             }
             if (vm.error != null && vm.items.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) { ErrorState(vm.error!!, vm::loadMoreRetry, webViewUrl = (c.registry.find(vm.sourceId) as? ScraperSource)?.baseUrl) }
+                item(span = { GridItemSpan(maxLineSpan) }) { ErrorState(vm.error!!, vm::refresh, webViewUrl = cfUrl) }
             }
         }
         GlassTopBar("Browse", collapsed, hazeState, Modifier.align(Alignment.TopCenter))
     }
 
-    if (showAdd) AddChannelDialog(vm, onDismiss = { showAdd = false; vm.clearAddError() })
-}
-
-private fun BrowseViewModel.loadMoreRetry() = reload()
-
-@Composable
-private fun AddChannelDialog(vm: BrowseViewModel, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add YouTube source") },
-        text = {
-            Column {
-                Text("Paste a playlist, channel or @handle URL. Long-press a custom entry in the grid to remove it.", style = InkType.callout)
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(text, { text = it }, singleLine = true, placeholder = { Text("youtube.com/@handle") })
-                vm.addError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = InkType.caption) }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = text.isNotBlank() && !vm.adding, onClick = { vm.addChannel(text, onDismiss) }) {
-                Text(if (vm.adding) "Adding..." else "Add")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
 
 @Composable
@@ -268,8 +290,8 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String) 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SourceSelector(
-    current: Source, recent: List<Source>, currentId: String,
-    all: List<Source>, onPick: (String) -> Unit,
+    current: Source?, recent: List<Source>, currentId: String?,
+    all: List<Source>, onPick: (String?) -> Unit,
 ) {
     val ink = LocalInk.current
     var open by remember { mutableStateOf(false) }
@@ -281,13 +303,25 @@ private fun SourceSelector(
         ) {
             Text("Source", style = InkType.callout, color = ink.secondary)
             Spacer(Modifier.weight(1f))
-            Text(current.name.substringBefore(" ("), style = InkType.callout.copy(fontWeight = FontWeight.SemiBold), color = ink.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(2f, fill = false))
-            Spacer(Modifier.width(6.dp))
-            Text(current.lang.uppercase(), style = InkType.caption, color = ink.secondary)
+            Text(current?.name?.substringBefore(" (") ?: "All sources (${all.size})", style = InkType.callout.copy(fontWeight = FontWeight.SemiBold), color = ink.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(2f, fill = false))
+            if (current != null) {
+                Spacer(Modifier.width(6.dp))
+                Text(current.lang.uppercase(), style = InkType.caption, color = ink.secondary)
+            }
             Icon(Icons.Outlined.UnfoldMore, null, tint = ink.secondary, modifier = Modifier.padding(start = 4.dp).size(18.dp))
         }
-        if (recent.size > 1) {
+        if (recent.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "__all") {
+                    val selected = currentId == null
+                    Text(
+                        "All", style = InkType.callout,
+                        color = if (selected) Color.White else ink.label, maxLines = 1,
+                        modifier = Modifier.clip(RoundedCornerShape(999.dp))
+                            .background(if (selected) ink.accent else ink.secondary.copy(alpha = 0.14f))
+                            .pressable { onPick(null) }.padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
                 items(recent, key = { it.id }) { s ->
                     val selected = s.id == currentId
                     Text(
@@ -319,6 +353,15 @@ private fun SourceSelector(
                 Box(Modifier.padding(horizontal = 16.dp)) { SearchField(q, { q = it }, "Search ${all.size} sources") }
                 Spacer(Modifier.height(6.dp))
                 LazyColumn(Modifier.weight(1f)) {
+                    if (q.isBlank()) item(key = "__all") {
+                        Row(
+                            Modifier.fillMaxWidth().pressable { onPick(null); open = false }.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("All sources", style = InkType.body.copy(fontWeight = FontWeight.SemiBold), color = ink.label, modifier = Modifier.weight(1f))
+                            if (currentId == null) Icon(Icons.Outlined.Check, null, tint = ink.accent, modifier = Modifier.padding(start = 10.dp).size(18.dp))
+                        }
+                    }
                     grouped.forEach { (letter, list) ->
                         stickyHeader(key = "h$letter") {
                             Text(letter.toString(), style = InkType.caption.copy(fontWeight = FontWeight.SemiBold), color = ink.secondary,

@@ -12,7 +12,6 @@ okhttp = "4.12.0"
 jsoup = "1.18.3"
 serialization = "1.8.1"
 haze = "1.6.4"
-ytplayer = "13.0.0"
 coroutines = "1.10.2"
 coreKtx = "1.16.0"
 work = "2.10.1"
@@ -47,7 +46,6 @@ biometric = { module = "androidx.biometric:biometric", version.ref = "biometric"
 fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 glance = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 conscrypt = { module = "org.conscrypt:conscrypt-android", version = "2.5.3" }
-ytplayer = { module = "com.pierfrancescosoffritti.androidyoutubeplayer:core", version.ref = "ytplayer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -12,23 +12,25 @@ class AppContainer(context: Context) {
     val settings = Settings(context)
     val db = InkDatabase.create(context)
 
-    init { ScraperSource.globalUserAgent = Cloudflare.webViewUserAgent(context) }
+    init {
+        ScraperSource.globalUserAgent = Cloudflare.webViewUserAgent(context)
+        SourceHealth.init(context)
+    }
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(WebViewCookieJar())
         .addInterceptor(ExplicitCookies.stash)
         .addNetworkInterceptor(ExplicitCookies.merge)
         .addInterceptor(CloudflareInterceptor(context))
+        .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
         .addInterceptor(RateLimitInterceptor("api.mangadex.org", 5))
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    val youtube = YouTubeDonghuaSource(context, httpClient, db.customChannels())
     val registry = SourceRegistry(
         listOf(
             MangaDexSource(httpClient) { settings.lang.value },
-            youtube,
         ) + app.inkwell.data.source.novel.novelSources(httpClient) +
             app.inkwell.data.source.manga.mangaSources(httpClient)
     )

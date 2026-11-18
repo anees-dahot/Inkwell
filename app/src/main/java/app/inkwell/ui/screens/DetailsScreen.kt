@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +41,7 @@ import app.inkwell.data.db.DlStatus
 import app.inkwell.data.db.DownloadItem
 import app.inkwell.data.db.LibraryCategory
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,6 +93,9 @@ class DetailsViewModel(
     var episodes by mutableStateOf<List<Episode>>(emptyList()); private set
     var loading by mutableStateOf(true); private set
     var error by mutableStateOf<String?>(null); private set
+    /** Same title found on other sources (used when this one has no chapters, e.g. licensed). */
+    var alternatives by mutableStateOf<List<Entry>>(emptyList()); private set
+    var findingAlternatives by mutableStateOf(false); private set
 
     val inLibrary = c.repo.isInLibrary(sourceId, entryId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val progress = c.repo.progress(sourceId, entryId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -106,8 +111,7 @@ class DetailsViewModel(
 
     val entry: Entry
         get() = details?.entry?.copy(coverUrl = baseEntry.coverUrl ?: details?.entry?.coverUrl, title = baseEntry.title.ifBlank { details?.entry?.title ?: "" }) ?: baseEntry
-    val isVideo get() = source.type == ContentType.VIDEO
-    fun openUrl(): String = c.youtube.openUrl(entryId)
+    val isVideo get() = false
 
     init { load() }
 
@@ -121,8 +125,26 @@ class DetailsViewModel(
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { error = e.message ?: "Could not load" }
             finally { loading = false }
+            if (episodes.isEmpty()) findAlternatives()
         }
     }
+
+    private suspend fun findAlternatives() {
+        val title = entry.title.ifBlank { return }
+        val key = app.inkwell.data.source.titleKey(title)
+        if (key.isEmpty()) return
+        val others = c.registry.sources.filter { it.type == source.type && it.id != sourceId && !app.inkwell.data.source.SourceHealth.benched(it.id) }
+        findingAlternatives = true
+        val found = ArrayList<Entry>()
+        app.inkwell.data.source.fanOut(others, parallel = 8, timeoutMs = 15_000, op = { it.search(title, 1) }) { _, r ->
+            val hit = r?.items?.firstOrNull { app.inkwell.data.source.titleKey(it.title) == key }
+                ?: r?.items?.firstOrNull { val k = app.inkwell.data.source.titleKey(it.title); k.length > 3 && (k.contains(key) || key.contains(k)) }
+            if (hit != null) { found += hit; alternatives = found.toList() }
+        }
+        findingAlternatives = false
+    }
+
+    fun sourceName(id: String) = c.registry.find(id)?.name?.substringBefore(" (") ?: id
 
     val remind = c.repo.observeRemind(sourceId, entryId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -149,7 +171,6 @@ class DetailsViewModel(
         val src = source
         return when {
             src is app.inkwell.data.source.MangaDexSource -> "https://mangadex.org/title/$entryId"
-            isVideo -> openUrl()
             src is app.inkwell.data.source.ScraperSource -> when {
                 entryId.startsWith("http") -> entryId
                 entryId.startsWith("/") -> src.baseUrl.trimEnd('/') + entryId
@@ -205,6 +226,7 @@ class DetailsViewModel(
 fun DetailsScreen(
     sourceId: String, entryId: String, title: String, coverUrl: String?,
     onBack: () -> Unit, onOpenEpisode: (Entry, Episode) -> Unit,
+    onOpenEntry: (Entry) -> Unit = {},
 ) {
     val vm = inkViewModel("details/$sourceId/$entryId") { DetailsViewModel(it, sourceId, entryId, title, coverUrl) }
     val ink = LocalInk.current
@@ -366,17 +388,6 @@ fun DetailsScreen(
                     }
                 }
             }
-            if (vm.isVideo) item {
-                run {
-                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Showing latest uploads.", style = InkType.callout, color = ink.secondary)
-                        FilledPill("Open full playlist in YouTube", filled = false) {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(vm.openUrl())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        }
-                        Spacer(Modifier.height(4.dp))
-                    }
-                }
-            }
             if (vm.error != null && vm.episodes.isEmpty()) {
                 item { ErrorState(vm.error!!, vm::load, webViewUrl = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl) }
             } else if (vm.loading && vm.episodes.isEmpty()) {
@@ -387,15 +398,38 @@ fun DetailsScreen(
                 val official = vm.details?.officialUrl
                 item {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        EmptyState(Icons.Outlined.Inbox, if (official != null) "This title is licensed. Read it on the official site." else "No ${if (vm.isVideo) "episodes" else "chapters"} available.")
-                        if (official != null) {
-                            Text(
-                                "Read officially", color = ink.accent, style = InkType.headline,
-                                modifier = Modifier.clip(RoundedCornerShape(CardRadius)).pressable {
-                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(official)))
-                                }.padding(horizontal = 20.dp, vertical = 12.dp),
-                            )
+                        val msg = when {
+                            vm.alternatives.isNotEmpty() -> "Not on ${vm.sourceName(sourceId)}. Read it from another source:"
+                            vm.findingAlternatives -> "Not on ${vm.sourceName(sourceId)}. Looking on other sources…"
+                            official != null -> "This title is licensed and no other source has it."
+                            else -> "No chapters available on any source."
                         }
+                        Text(msg, style = InkType.callout, color = ink.secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                        if (vm.findingAlternatives) LinearProgressIndicator(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), color = ink.accent)
+                    }
+                }
+                items(vm.alternatives, key = { "alt/" + it.sourceId + "/" + it.id }) { alt ->
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(CardRadius))
+                            .background(ink.secondary.copy(alpha = 0.10f)).pressable { onOpenEntry(alt) }.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Cover(alt.coverUrl, Modifier.width(40.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(alt.title, style = InkType.body, color = ink.label, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(vm.sourceName(alt.sourceId), style = InkType.caption, color = ink.secondary)
+                        }
+                    }
+                }
+                if (official != null && !vm.findingAlternatives) item {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Read officially", color = ink.accent, style = InkType.headline,
+                            modifier = Modifier.clip(RoundedCornerShape(CardRadius)).pressable {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(official)))
+                            }.padding(horizontal = 20.dp, vertical = 12.dp),
+                        )
                     }
                 }
             }

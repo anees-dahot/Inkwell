@@ -14,8 +14,8 @@ android {
         applicationId = "app.inkwell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 120
-        versionName = "1.2.0"
+        versionCode = 130
+        versionName = "1.3.0"
     }
     val ksProps = Properties().apply {
         rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
@@ -66,7 +66,6 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.coroutines.android)
     implementation(libs.haze)
-    implementation(libs.ytplayer)
     implementation(libs.conscrypt)
     implementation(libs.work.runtime)
     implementation(libs.biometric)

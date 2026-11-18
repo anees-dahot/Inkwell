@@ -83,7 +83,7 @@ fun StatsScreen(onBack: () -> Unit, onOpenEntry: (Entry) -> Unit) {
                 item { SectionHeader("By type") }
                 item {
                     GroupedCard {
-                        val types = listOf(ContentType.MANGA to "Manga", ContentType.NOVEL to "Novels", ContentType.VIDEO to "Donghua")
+                        val types = listOf(ContentType.MANGA to "Manga", ContentType.NOVEL to "Novels")
                         types.forEachIndexed { i, (t, label) ->
                             val n = s.chaptersByType[t] ?: 0
                             val time = s.timeByType[t] ?: 0L

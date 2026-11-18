@@ -38,6 +38,8 @@ class MangaDexSource(
             addQueryParameter("includes[]", "cover_art")
             addQueryParameter("contentRating[]", "safe")
             addQueryParameter("contentRating[]", "suggestive")
+            addQueryParameter("contentRating[]", "erotica")
+            addQueryParameter("contentRating[]", "pornographic")
             addQueryParameter("hasAvailableChapters", "true")
             addQueryParameter("availableTranslatedLanguage[]", lang)
             if (order != null) addQueryParameter(order, "desc")
@@ -125,6 +127,8 @@ class MangaDexSource(
                 .addQueryParameter("includes[]", "scanlation_group")
                 .addQueryParameter("contentRating[]", "safe")
                 .addQueryParameter("contentRating[]", "suggestive")
+                .addQueryParameter("contentRating[]", "erotica")
+                .addQueryParameter("contentRating[]", "pornographic")
                 .build()
             val root = get(url)
             val data = root["data"]?.jsonArray ?: break

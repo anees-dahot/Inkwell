@@ -35,7 +35,9 @@ class InkwellApp : Application(), SingletonImageLoader.Factory {
                     }
                 }
                 chain.proceed(b.build())
-            }.build()
+            }
+            .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
+            .build()
         return ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
             .crossfade(true)

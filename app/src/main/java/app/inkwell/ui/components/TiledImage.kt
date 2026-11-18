@@ -95,6 +95,7 @@ private val client by lazy {
             }
             chain.proceed(b.build())
         }
+        .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
         .build()
 }
 

@@ -46,7 +46,6 @@ fun MainShell(
     onOpenUpcoming: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
     onOpenStats: () -> Unit = {},
-    onSearchAll: (app.inkwell.data.model.ContentType, String) -> Unit = { _, _ -> },
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val hazeState = remember { HazeState() }
@@ -72,7 +71,7 @@ fun MainShell(
                     when (t) {
                         0 -> LibraryScreen(hazeState, onOpenEntry, onOpenHistory)
                         1 -> UpdatesScreen(hazeState, onOpenUpdate, onOpenUpcoming)
-                        2 -> BrowseScreen(hazeState, onOpenEntry, onSearchAll)
+                        2 -> BrowseScreen(hazeState, onOpenEntry)
                         3 -> HistoryScreen(hazeState, onOpenHistory)
                         else -> MoreScreen(hazeState, onOpenUpcoming, onOpenDownloads, onOpenStats)
                     }

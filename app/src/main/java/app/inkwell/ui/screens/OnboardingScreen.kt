@@ -52,8 +52,8 @@ fun OnboardingScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val pager = rememberPagerState { 3 }
     val askNotif = rememberNotificationPermission()
-    val types = listOf(ContentType.MANGA to "Manga", ContentType.NOVEL to "Novels", ContentType.VIDEO to "Donghua")
-    var picked by remember { mutableStateOf(setOf(ContentType.MANGA, ContentType.NOVEL, ContentType.VIDEO)) }
+    val types = listOf(ContentType.MANGA to "Manga", ContentType.NOVEL to "Novels")
+    var picked by remember { mutableStateOf(setOf(ContentType.MANGA, ContentType.NOVEL)) }
     var updates by remember { mutableStateOf(true) }
     var notifAsked by remember { mutableStateOf(false) }
 
@@ -76,7 +76,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
     Box(Modifier.fillMaxSize().background(ink.bg).windowInsetsPadding(WindowInsets.systemBars)) {
         HorizontalPager(pager, Modifier.fillMaxSize().padding(bottom = 120.dp, top = 40.dp)) { p ->
             when (p) {
-                0 -> Page(Icons.Outlined.AutoStories, "Welcome to Inkwell", "Manga, novels and donghua in one calm place. Track what you read and never miss a chapter.")
+                0 -> Page(Icons.Outlined.AutoStories, "Welcome to Inkwell", "Manga, manhwa and novels in one calm place. Track what you read and never miss a chapter.")
                 1 -> Page(Icons.Outlined.Category, "What do you read?", "Pick what you care about. Browse will open on your first choice.") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         types.forEach { (t, label) ->

@@ -69,6 +69,7 @@ fun EntryGridItem(
     entry: Entry,
     modifier: Modifier = Modifier,
     badge: Int = 0,
+    subtitle: String? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -82,6 +83,10 @@ fun EntryGridItem(
         Text(
             entry.title, style = InkType.caption.copy(fontSize = 13.sp, letterSpacing = 0.sp), color = ink.label,
             maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+        if (subtitle != null) Text(
+            subtitle, style = InkType.caption.copy(fontSize = 11.sp, letterSpacing = 0.sp), color = ink.secondary,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
 }

@@ -18,9 +18,7 @@ import app.inkwell.ui.motion.LocalReducedMotion
 import app.inkwell.ui.motion.Motion
 import app.inkwell.ui.screens.DetailsScreen
 import app.inkwell.ui.screens.DownloadsScreen
-import app.inkwell.ui.screens.GlobalSearchScreen
 import app.inkwell.ui.screens.NovelReaderScreen
-import app.inkwell.ui.screens.PlayerScreen
 import app.inkwell.ui.screens.ReaderScreen
 import app.inkwell.ui.screens.WebViewScreen
 import app.inkwell.ui.screens.UpcomingScreen
@@ -36,12 +34,10 @@ import kotlinx.serialization.Serializable
 @Serializable object UpcomingRoute
 @Serializable object DownloadsRoute
 @Serializable object StatsRoute
-@Serializable data class GlobalSearchRoute(val type: String, val query: String)
 @Serializable data class DetailsRoute(val sourceId: String, val entryId: String, val title: String, val coverUrl: String? = null)
 @Serializable data class ReaderRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class NovelRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class WebViewRoute(val url: String)
-@Serializable data class PlayerRoute(val sourceId: String, val entryId: String, val episodeId: String)
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -55,7 +51,6 @@ fun AppNav() {
     fun typeOf(sourceId: String) = container.registry.find(sourceId)?.type ?: ContentType.MANGA
     fun openEpisode(sourceId: String, entryId: String, episodeId: String) {
         when (typeOf(sourceId)) {
-            ContentType.VIDEO -> nav.navigate(PlayerRoute(sourceId, entryId, episodeId))
             ContentType.NOVEL -> nav.navigate(NovelRoute(sourceId, entryId, episodeId))
             else -> nav.navigate(ReaderRoute(sourceId, entryId, episodeId))
         }
@@ -101,7 +96,6 @@ fun AppNav() {
                         onOpenUpcoming = { nav.navigate(UpcomingRoute) },
                         onOpenDownloads = { nav.navigate(DownloadsRoute) },
                         onOpenStats = { nav.navigate(StatsRoute) },
-                        onSearchAll = { t, q -> nav.navigate(GlobalSearchRoute(t.name, q)) },
                     )
                 }
             }
@@ -112,6 +106,7 @@ fun AppNav() {
                         r.sourceId, r.entryId, r.title, r.coverUrl,
                         onBack = { nav.popBackStack() },
                         onOpenEpisode = { entry, ep -> openEpisode(entry.sourceId, entry.id, ep.id) },
+                        onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                     )
                 }
             }
@@ -129,13 +124,6 @@ fun AppNav() {
                 val r = e.toRoute<NovelRoute>()
                 NovelReaderScreen(r.sourceId, r.entryId, r.episodeId, onBack = { nav.popBackStack() })
             }
-            composable<PlayerRoute>(
-                enterTransition = { if (reduced) fadeIn(fade) else slideInVertically(slideSpec) { it } + fadeIn(fade) },
-                popExitTransition = { if (reduced) fadeOut(fade) else slideOutVertically(slideSpec) { it } + fadeOut(fade) },
-            ) { e ->
-                val r = e.toRoute<PlayerRoute>()
-                PlayerScreen(r.sourceId, r.entryId, r.episodeId, onBack = { nav.popBackStack() })
-            }
             composable<UpcomingRoute> {
                 UpcomingScreen(
                     onBack = { nav.popBackStack() },
@@ -150,11 +138,6 @@ fun AppNav() {
                     onBack = { nav.popBackStack() },
                     onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                 )
-            }
-            composable<GlobalSearchRoute> { e ->
-                val r = e.toRoute<GlobalSearchRoute>()
-                GlobalSearchScreen(r.type, r.query, onBack = { nav.popBackStack() },
-                    onOpen = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) })
             }
             composable<WebViewRoute> { e ->
                 WebViewScreen(e.toRoute<WebViewRoute>().url, onBack = { nav.popBackStack() })
