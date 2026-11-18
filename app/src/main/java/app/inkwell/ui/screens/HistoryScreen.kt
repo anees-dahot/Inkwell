@@ -43,6 +43,9 @@ fun HistoryScreen(hazeState: HazeState, onOpen: (HistoryItem) -> Unit) {
     val ink = LocalInk.current
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val switchTab = LocalSwitchTab.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    OnTabReselect(3) { list.animateScrollToItem(0) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -54,11 +57,17 @@ fun HistoryScreen(hazeState: HazeState, onOpen: (HistoryItem) -> Unit) {
             if (all.isNotEmpty()) item {
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { SearchField(query, { query = it }, "Search history") }
             }
-            if (items.isEmpty()) item { EmptyState(Icons.Outlined.History, if (all.isEmpty()) "Nothing read or watched yet." else "Nothing matches.") }
+            if (items.isEmpty()) item {
+                EmptyState(
+                    Icons.Outlined.History, if (all.isEmpty()) "Nothing read or watched yet.\nChapters you open show up here." else "Nothing matches.",
+                    actionLabel = if (all.isEmpty()) "Browse sources" else null, onAction = if (all.isEmpty()) ({ switchTab(2) }) else null,
+                )
+            }
             items(items, key = { it.sourceId + "/" + it.entryId }) { h ->
                 val dismiss = rememberSwipeToDismissBoxState(
                     confirmValueChange = { v ->
                         if (v == SwipeToDismissBoxValue.EndToStart) {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                             scope.launch {
                                 c.repo.deleteHistory(h.sourceId, h.entryId)
                                 val r = snack.showSnackbar("Removed ${h.entryTitle}", "Undo", duration = SnackbarDuration.Short)

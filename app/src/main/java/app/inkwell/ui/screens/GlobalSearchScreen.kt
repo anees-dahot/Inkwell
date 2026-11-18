@@ -162,6 +162,7 @@ fun GlobalSearchScreen(typeName: String, query: String, onBack: () -> Unit, onOp
             "Search all", collapsed, hazeState, Modifier.align(Alignment.TopCenter),
             leading = { BarIconButton(Icons.AutoMirrored.Outlined.ArrowBackIos, "Back", onClick = onBack) },
         )
+        OfflineBanner(Modifier.align(Alignment.TopCenter))
     }
 }
 

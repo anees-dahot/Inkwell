@@ -133,7 +133,7 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
 }
 
 private fun initialSource(c: AppContainer): String {
-    val first = c.registry.sources.first()
+    val first = c.registry.sources.firstOrNull { it.type.name == c.settings.defaultBrowseType } ?: c.registry.sources.first()
     return c.settings.lastSource(first.type.name)?.takeIf { c.registry.find(it) != null } ?: first.id
 }
 
@@ -145,6 +145,7 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onSearchAll: (Co
     val grid = rememberLazyGridState()
     val collapsed by grid.rememberCollapsed()
     val haptic = LocalHapticFeedback.current
+    OnTabReselect(2) { grid.animateScrollToItem(0) }
     val sources = c.registry.sources
     var showAdd by remember { mutableStateOf(false) }
 

@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class AccentColor(val label: String, val argb: Long) {
+    PINK("Pink", 0xFFFF2D55), ORANGE("Orange", 0xFFFF9500), GREEN("Green", 0xFF34C759), TEAL("Teal", 0xFF30B0C7),
+    BLUE("Blue", 0xFF0A84FF), INDIGO("Indigo", 0xFF5E5CE6), PURPLE("Purple", 0xFFAF52DE), RED("Red", 0xFFE5342B),
+}
 enum class ReaderMode { AUTO, WEBTOON, PAGED }
 enum class ReaderDirection { LTR, RTL }
 
@@ -105,6 +109,46 @@ class Settings(context: Context) {
             .putBoolean("nv_tap", v.tapZones).putBoolean("nv_cont", v.continuous)
             .putFloat("nv_rate", v.ttsRate).putFloat("nv_pitch", v.ttsPitch).apply()
     }
+
+    // appearance
+    private val _accent = MutableStateFlow(enumOf(sp.getString("accent", null), AccentColor.PINK))
+    val accent: StateFlow<AccentColor> = _accent
+    fun setAccent(v: AccentColor) { _accent.value = v; sp.edit().putString("accent", v.name).apply() }
+
+    private val _amoled = MutableStateFlow(sp.getBoolean("amoled", false))
+    val amoled: StateFlow<Boolean> = _amoled
+    fun setAmoled(v: Boolean) { _amoled.value = v; sp.edit().putBoolean("amoled", v).apply() }
+
+    private val _dynamic = MutableStateFlow(sp.getBoolean("dynamic_color", false))
+    val dynamicColor: StateFlow<Boolean> = _dynamic
+    fun setDynamicColor(v: Boolean) { _dynamic.value = v; sp.edit().putBoolean("dynamic_color", v).apply() }
+
+    // privacy
+    /** Minutes in background before the app locks; -1 = lock disabled, 0 = immediately. */
+    private val _lockMin = MutableStateFlow(sp.getInt("lock_min", -1))
+    val lockMinutes: StateFlow<Int> = _lockMin
+    fun setLockMinutes(v: Int) { _lockMin.value = v; sp.edit().putInt("lock_min", v).apply() }
+
+    private val _secure = MutableStateFlow(sp.getBoolean("secure_screen", false))
+    val secureScreen: StateFlow<Boolean> = _secure
+    fun setSecureScreen(v: Boolean) { _secure.value = v; sp.edit().putBoolean("secure_screen", v).apply() }
+
+    private val _incognito = MutableStateFlow(sp.getBoolean("incognito", false))
+    val incognito: StateFlow<Boolean> = _incognito
+    fun setIncognito(v: Boolean) { _incognito.value = v; sp.edit().putBoolean("incognito", v).apply() }
+
+    // onboarding: existing installs (prefs or DB already present) skip it
+    private val _onboarded = MutableStateFlow(
+        if (sp.contains("onboarded")) sp.getBoolean("onboarded", true)
+        else (sp.all.isNotEmpty() || context.getDatabasePath("inkwell.db").exists()).also { sp.edit().putBoolean("onboarded", it).apply() }
+    )
+    val onboarded: StateFlow<Boolean> = _onboarded
+    fun setOnboarded(v: Boolean) { _onboarded.value = v; sp.edit().putBoolean("onboarded", v).apply() }
+
+    /** ContentType name Browse opens on (set by onboarding). */
+    var defaultBrowseType: String?
+        get() = sp.getString("browse_type", null)
+        set(v) { sp.edit().putString("browse_type", v).apply() }
 
     private inline fun <reified E : Enum<E>> enumOf(s: String?, def: E): E =
         runCatching { enumValueOf<E>(s!!) }.getOrDefault(def)

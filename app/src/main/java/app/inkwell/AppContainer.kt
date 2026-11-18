@@ -33,4 +33,5 @@ class AppContainer(context: Context) {
             app.inkwell.data.source.manga.mangaSources(httpClient)
     )
     val repo = Repository(registry, db, settings, context.applicationContext, httpClient)
+    val tracker = app.inkwell.data.ReadingTracker(db, settings, context.applicationContext)
 }

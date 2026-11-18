@@ -133,3 +133,15 @@ data class DownloadItem(
     val error: String?,
     val createdAt: Long,
 )
+
+/** One foreground reading/watching session (feeds the statistics screen). */
+@Entity(indices = [androidx.room.Index("startedAt")])
+data class ReadingSession(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: String,
+    val entryId: String,
+    val startedAt: Long,
+    val durationMs: Long,
+)
+
+data class TitleRow(val sourceId: String, val entryId: String, val title: String)

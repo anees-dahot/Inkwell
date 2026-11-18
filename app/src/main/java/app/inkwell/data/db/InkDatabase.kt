@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [LibraryItem::class, ProgressItem::class, HistoryItem::class, CachedEpisode::class, CustomChannel::class, CustomReminder::class, LibraryCategory::class, DownloadItem::class],
-    version = 3,
+    entities = [LibraryItem::class, ProgressItem::class, HistoryItem::class, CachedEpisode::class, CustomChannel::class, CustomReminder::class, LibraryCategory::class, DownloadItem::class, ReadingSession::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class InkDatabase : RoomDatabase() {
@@ -21,6 +21,7 @@ abstract class InkDatabase : RoomDatabase() {
     abstract fun reminders(): ReminderDao
     abstract fun categories(): CategoryDao
     abstract fun downloads(): DownloadDao
+    abstract fun stats(): StatsDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -53,8 +54,18 @@ abstract class InkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS ReadingSession (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "sourceId TEXT NOT NULL, entryId TEXT NOT NULL, startedAt INTEGER NOT NULL, durationMs INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReadingSession_startedAt ON ReadingSession (startedAt)")
+            }
+        }
+
         fun create(context: Context) =
             Room.databaseBuilder(context, InkDatabase::class.java, "inkwell.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }

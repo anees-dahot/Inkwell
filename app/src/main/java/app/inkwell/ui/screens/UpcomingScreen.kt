@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -108,13 +109,12 @@ fun UpcomingScreen(onBack: () -> Unit, onOpenEntry: (Entry) -> Unit) {
             if (selected != null) item { SectionHeader("Releases on ${dayHeader(selected!!, today)}") }
             else item { SectionHeader("Expected releases") }
             if (shownDays.isEmpty()) item {
-                GroupedCard {
-                    Text(
-                        if (items.isEmpty()) "Add titles to your library to see expected releases."
-                        else "Nothing expected${if (selected != null) " on this day" else " yet"}. Estimates appear once a title has a few dated chapters.",
-                        style = InkType.callout, color = ink.secondary, modifier = Modifier.padding(16.dp),
-                    )
-                }
+                EmptyState(
+                    androidx.compose.material.icons.Icons.Outlined.CalendarMonth,
+                    if (items.isEmpty()) "Add titles to your library to see expected releases."
+                    else "Nothing expected${if (selected != null) " on this day" else " yet"}.\nEstimates appear once a title has a few dated chapters.",
+                    Modifier.padding(vertical = 0.dp),
+                )
             }
             shownDays.forEach { (day, list) ->
                 item(key = "h$day") {

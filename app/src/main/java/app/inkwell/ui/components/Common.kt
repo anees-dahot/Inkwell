@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -95,7 +96,7 @@ fun SkeletonGridItem() {
 }
 
 @Composable
-fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
+fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
     val ink = LocalInk.current
     Column(
         modifier.fillMaxWidth().padding(vertical = 64.dp, horizontal = 32.dp),
@@ -104,6 +105,10 @@ fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
         Icon(icon, null, tint = ink.secondary, modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(12.dp))
         Text(text, style = InkType.callout, color = ink.secondary, textAlign = TextAlign.Center)
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(16.dp))
+            FilledPill(actionLabel, filled = false, onClick = onAction)
+        }
     }
 }
 
@@ -111,7 +116,7 @@ fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
 fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier, webViewUrl: String? = null) {
     val ink = LocalInk.current
     val openWebView = LocalOpenWebView.current
-    val isCf = webViewUrl != null && (message.contains("cloudflare", true) || message.contains("HTTP 403") || message.contains("HTTP 503"))
+    val isCf = webViewUrl != null
     var opened by remember { mutableStateOf(false) }
     if (isCf) {
         val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -124,18 +129,19 @@ fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifi
             onDispose { owner.lifecycle.removeObserver(obs) }
         }
     }
+    val online by rememberIsOnline()
     Column(
         modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Outlined.ErrorOutline, null, tint = ink.secondary, modifier = Modifier.size(48.dp))
+        Icon(if (online) Icons.Outlined.ErrorOutline else Icons.Outlined.WifiOff, null, tint = ink.secondary, modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(12.dp))
-        Text(message, style = InkType.callout, color = ink.secondary, textAlign = TextAlign.Center, maxLines = 3)
+        Text(if (online) message else "No internet connection.\nCheck your network and try again.", style = InkType.callout, color = ink.secondary, textAlign = TextAlign.Center, maxLines = 3)
         Spacer(Modifier.height(16.dp))
         FilledPill("Retry", onClick = onRetry)
-        if (isCf) {
+        if (webViewUrl != null && online) {
             Spacer(Modifier.height(10.dp))
-            FilledPill("Open in WebView", filled = false) { opened = true; openWebView(webViewUrl!!) }
+            FilledPill("Open in WebView", filled = false) { opened = true; openWebView(webViewUrl) }
         }
     }
 }

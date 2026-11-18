@@ -11,6 +11,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import app.inkwell.AppLock
+import app.inkwell.data.AccentColor
 import app.inkwell.data.ReaderDirection
 import app.inkwell.data.ReaderMode
 import app.inkwell.data.ThemeMode
@@ -53,7 +62,7 @@ private fun ActionRow(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDownloads: () -> Unit = {}) {
+fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDownloads: () -> Unit = {}, onOpenStats: () -> Unit = {}) {
     val c = LocalContainer.current
     val s = c.settings
     val theme by s.theme.collectAsStateWithLifecycle()
@@ -72,6 +81,14 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
     val dlWifi by s.downloadWifiOnly.collectAsStateWithLifecycle()
     val dlAuto by s.autoDownload.collectAsStateWithLifecycle()
     val askNotif = rememberNotificationPermission()
+    val accent by s.accent.collectAsStateWithLifecycle()
+    val amoled by s.amoled.collectAsStateWithLifecycle()
+    val dynamic by s.dynamicColor.collectAsStateWithLifecycle()
+    val lockMin by s.lockMinutes.collectAsStateWithLifecycle()
+    val secure by s.secureScreen.collectAsStateWithLifecycle()
+    val incognito by s.incognito.collectAsStateWithLifecycle()
+    val lockOptions = listOf(-1, 0, 1, 5, 15)
+    val canDynamic = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     var message by remember { mutableStateOf<String?>(null) }
     val intervals = listOf(0, 6, 12, 24)
     val exporter = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -116,8 +133,49 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
                     SettingRow("Theme") {
                         SegmentedControl(listOf("System", "Light", "Dark"), theme.ordinal, { s.setTheme(ThemeMode.entries[it]) })
                     }
+                    Hairline()
+                    SettingRow(if (dynamic && canDynamic) "Accent color (using system colors)" else "Accent color") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            AccentColor.entries.forEach { a ->
+                                Box(
+                                    Modifier.size(30.dp).clip(CircleShape).background(Color(a.argb)).pressable { s.setAccent(a) },
+                                    contentAlignment = Alignment.Center,
+                                ) { if (a == accent) Icon(Icons.Filled.Check, a.label, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                            }
+                        }
+                    }
+                    Hairline()
+                    ToggleRow("AMOLED black (dark mode)", amoled) { s.setAmoled(it) }
+                    if (canDynamic) {
+                        Hairline()
+                        ToggleRow("Dynamic color (Material You)", dynamic) { s.setDynamicColor(it) }
+                    }
                 }
             }
+            item { SectionHeader("Privacy") }
+            item {
+                GroupedCard {
+                    ToggleRow("Incognito mode", incognito) { s.setIncognito(it) }
+                    Hairline()
+                    SettingRow("App lock") {
+                        SegmentedControl(listOf("Off", "Instantly", "1 min", "5 min", "15 min"), lockOptions.indexOf(lockMin).coerceAtLeast(0), {
+                            val v = lockOptions[it]
+                            if (v >= 0 && !AppLock.available(ctx)) message = "Set up a screen lock or biometrics in your device settings first."
+                            else s.setLockMinutes(v)
+                        })
+                    }
+                    Hairline()
+                    ToggleRow("Hide in recent apps & screenshots", secure) { s.setSecureScreen(it) }
+                }
+            }
+            item {
+                Text(
+                    "Incognito: reading progress, history and statistics are not recorded. App lock asks for fingerprint, face or your device PIN after the chosen time in the background.",
+                    style = InkType.caption, color = ink.secondary, modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+                )
+            }
+            item { SectionHeader("Reading") }
+            item { GroupedCard { ActionRow("Reading statistics", onClick = onOpenStats) } }
             item { SectionHeader("Library updates") }
             item {
                 GroupedCard {
@@ -154,9 +212,9 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
             item { SectionHeader("Backup") }
             item {
                 GroupedCard {
-                    ActionRow("Export backup") { exporter.launch("inkwell-backup.json") }
+                    ActionRow("Export backup") { app.inkwell.AppLock.skipNextLock = true; exporter.launch("inkwell-backup.json") }
                     Hairline()
-                    ActionRow("Restore from backup") { importer.launch(arrayOf("application/json", "*/*")) }
+                    ActionRow("Restore from backup") { app.inkwell.AppLock.skipNextLock = true; importer.launch(arrayOf("application/json", "*/*")) }
                 }
             }
             item { SectionHeader("Manga") }

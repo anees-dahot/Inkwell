@@ -45,6 +45,7 @@ fun MainShell(
     onOpenHistory: (HistoryItem) -> Unit,
     onOpenUpcoming: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    onOpenStats: () -> Unit = {},
     onSearchAll: (app.inkwell.data.model.ContentType, String) -> Unit = { _, _ -> },
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -56,10 +57,16 @@ fun MainShell(
     LaunchedEffect(launchTab) {
         launchTab?.let { tab = it.coerceIn(0, TABS.lastIndex); app.inkwell.AppLaunch.openTab.value = null }
     }
+    val reselect = remember { kotlinx.coroutines.flow.MutableSharedFlow<Int>(extraBufferCapacity = 1) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val barHeight = 49.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(Modifier.fillMaxSize().background(ink.bg)) {
-        CompositionLocalProvider(LocalBottomInset provides PaddingValues(bottom = barHeight)) {
+        CompositionLocalProvider(
+            LocalBottomInset provides PaddingValues(bottom = barHeight),
+            LocalTabReselect provides reselect,
+            LocalSwitchTab provides { tab = it.coerceIn(0, TABS.lastIndex) },
+        ) {
             Crossfade(tab, animationSpec = Motion.Default.specFor(reduced), label = "tabs") { t ->
                 holder.SaveableStateProvider(t) {
                     when (t) {
@@ -67,13 +74,19 @@ fun MainShell(
                         1 -> UpdatesScreen(hazeState, onOpenUpdate, onOpenUpcoming)
                         2 -> BrowseScreen(hazeState, onOpenEntry, onSearchAll)
                         3 -> HistoryScreen(hazeState, onOpenHistory)
-                        else -> MoreScreen(hazeState, onOpenUpcoming, onOpenDownloads)
+                        else -> MoreScreen(hazeState, onOpenUpcoming, onOpenDownloads, onOpenStats)
                     }
                 }
             }
         }
         Box(Modifier.align(Alignment.BottomCenter)) {
-            GlassTabBar(TABS, tab, hazeState) { tab = it }
+            GlassTabBar(TABS, tab, hazeState) {
+                if (it == tab) reselect.tryEmit(it) else {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    tab = it
+                }
+            }
         }
+        OfflineBanner(Modifier.align(Alignment.TopCenter))
     }
 }

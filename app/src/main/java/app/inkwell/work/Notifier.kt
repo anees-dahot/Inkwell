@@ -71,7 +71,7 @@ object Notifier {
             val i = n.item
             nm.notify(
                 "${i.sourceId}/${i.entryId}".hashCode(),
-                NotificationCompat.Builder(ctx, CH_UPDATES).setSmallIcon(android.R.drawable.stat_notify_more)
+                NotificationCompat.Builder(ctx, CH_UPDATES).setSmallIcon(app.inkwell.R.drawable.ic_stat_inkwell)
                     .setContentTitle(i.title).setContentText(chapterLabel(n.episodes))
                     .setGroup(GROUP).setAutoCancel(true).setContentIntent(open).build()
             )
@@ -79,7 +79,7 @@ object Notifier {
         val inbox = NotificationCompat.InboxStyle().also { st -> plain.take(6).forEach { st.addLine("${it.item.title} · ${chapterLabel(it.episodes)}") } }
         nm.notify(
             SUMMARY_ID,
-            NotificationCompat.Builder(ctx, CH_UPDATES).setSmallIcon(android.R.drawable.stat_notify_more)
+            NotificationCompat.Builder(ctx, CH_UPDATES).setSmallIcon(app.inkwell.R.drawable.ic_stat_inkwell)
                 .setContentTitle(if (total == 1) "1 new chapter" else "$total new chapters")
                 .setContentText(head).setStyle(inbox)
                 .setGroup(GROUP).setGroupSummary(true).setAutoCancel(true).setContentIntent(open).build()
@@ -96,7 +96,7 @@ object Notifier {
         }
         NotificationManagerCompat.from(ctx).notify(
             id,
-            NotificationCompat.Builder(ctx, CH_REMINDERS).setSmallIcon(android.R.drawable.stat_notify_more)
+            NotificationCompat.Builder(ctx, CH_REMINDERS).setSmallIcon(app.inkwell.R.drawable.ic_stat_inkwell)
                 .setContentTitle(title).setContentText(text).setAutoCancel(true).setContentIntent(open).build()
         )
     }

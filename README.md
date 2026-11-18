@@ -17,7 +17,13 @@ Android app for reading **manga, manhwa and web novels** and watching **donghua*
 - **Global search** across every source at once
 - **Novel reader** — fonts, size, spacing, margins, Light/Sepia/Dark/Black themes, text-to-speech read-aloud, chapter list, continuous scroll, resume position
 - **Manga reader** — Paged (LTR/RTL), Vertical and Webtoon modes per title, page slider, seamless next chapter, brightness, save/share pages
-- History with search, light/dark theme
+- **Background read-aloud** with media notification controls
+- **Source migration** — move a title (with progress, category and reminders) to another source
+- **Reading statistics** — time read, chapters, streaks, 30-day chart
+- **App lock** (fingerprint/PIN), hide in recents, **incognito mode**
+- **Themes** — accent colors, AMOLED black, Material You on Android 12+
+- **Home screen widgets** — Continue reading and Upcoming releases
+- History with search, offline banner, first-run setup
 
 ## Install
 

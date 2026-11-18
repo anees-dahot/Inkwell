@@ -53,6 +53,7 @@ object PageActions {
                 putExtra(Intent.EXTRA_TEXT, url)
             }
         }
+        app.inkwell.AppLock.skipNextLock = true
         return Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 }

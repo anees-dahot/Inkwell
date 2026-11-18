@@ -50,6 +50,12 @@ class ReaderConfig(
     val fg: Color get() = if (bg == ReaderBackground.WHITE) Color.Black else Color.White
 }
 
+/** In-memory reader state that intentionally resets when the app process restarts. */
+object ReaderSession {
+    /** Custom brightness (0.01..1) or -1 for system; not persisted. */
+    val brightness = kotlinx.coroutines.flow.MutableStateFlow(-1f)
+}
+
 /** Lets volume keys / external code turn pages in whichever reader is on screen. */
 class ReaderNav {
     var next: () -> Unit = {}
@@ -190,6 +196,7 @@ fun WebtoonReader(
     SideEffect { nav.next = { scroll(1) }; nav.prev = { scroll(-1) } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val h = constraints.maxHeight.toFloat()
+        Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = list,
             verticalArrangement = Arrangement.spacedBy(if (cfg.gap) 8.dp else 0.dp),
@@ -219,6 +226,11 @@ fun WebtoonReader(
                     is RItem.Trans -> TransitionView(it, vm, cfg, Modifier.fillMaxWidth().height(320.dp).wrapContentSize())
                 }
             }
+        }
+        if (vm.nextLoading) androidx.compose.material3.LinearProgressIndicator(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp),
+            color = app.inkwell.ui.theme.LocalInk.current.accent, trackColor = Color.Transparent,
+        )
         }
     }
 }

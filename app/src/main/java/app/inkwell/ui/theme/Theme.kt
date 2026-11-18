@@ -1,6 +1,10 @@
 package app.inkwell.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -54,15 +58,32 @@ object InkType {
 val CardRadius = 12.dp
 val CoverRadius = 8.dp
 
+/** Near-black card for the AMOLED option (background stays pure black). */
+private val AmoledCard = Color(0xFF0C0C0E)
+
 @Composable
-fun InkwellTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val ink = if (dark) DarkInk else LightInk
+fun InkwellTheme(
+    dark: Boolean = isSystemInDarkTheme(),
+    accent: Color = SystemPink,
+    amoled: Boolean = false,
+    dynamic: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val base = if (dark) DarkInk else LightInk
+    val useDynamic = dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val ctx = LocalContext.current
+    val dyn = if (useDynamic) (if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)) else null
+    var ink = base.copy(accent = dyn?.primary ?: accent)
+    if (dyn != null) ink = if (dark) ink.copy(bg = dyn.surface, card = dyn.surfaceContainerHigh)
+    else ink.copy(bg = dyn.surfaceContainer, card = dyn.surfaceContainerLowest)
+    if (dark && amoled) ink = ink.copy(bg = Color.Black, card = AmoledCard)
+    val onAccent = if (dyn != null) dyn.onPrimary else Color.White
     val scheme = if (dark) darkColorScheme(
-        primary = ink.accent, onPrimary = Color.White, background = ink.bg, onBackground = ink.label,
+        primary = ink.accent, onPrimary = onAccent, background = ink.bg, onBackground = ink.label,
         surface = ink.card, onSurface = ink.label, surfaceVariant = ink.card, onSurfaceVariant = ink.secondary,
         outline = ink.separator, surfaceContainer = ink.card, surfaceContainerHigh = ink.card,
     ) else lightColorScheme(
-        primary = ink.accent, onPrimary = Color.White, background = ink.bg, onBackground = ink.label,
+        primary = ink.accent, onPrimary = onAccent, background = ink.bg, onBackground = ink.label,
         surface = ink.card, onSurface = ink.label, surfaceVariant = ink.card, onSurfaceVariant = ink.secondary,
         outline = ink.separator, surfaceContainer = ink.card, surfaceContainerHigh = ink.card,
     )

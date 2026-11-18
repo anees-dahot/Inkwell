@@ -14,8 +14,8 @@ android {
         applicationId = "app.inkwell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 110
-        versionName = "1.1.0"
+        versionCode = 120
+        versionName = "1.2.0"
     }
     val ksProps = Properties().apply {
         rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
@@ -69,6 +69,9 @@ dependencies {
     implementation(libs.ytplayer)
     implementation(libs.conscrypt)
     implementation(libs.work.runtime)
+    implementation(libs.biometric)
+    implementation(libs.fragment)
+    implementation(libs.glance)
     testImplementation("junit:junit:4.13.2")
 }
 

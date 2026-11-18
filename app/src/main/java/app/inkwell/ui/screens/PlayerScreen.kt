@@ -95,6 +95,7 @@ class PlayerViewModel(
 
 @Composable
 fun PlayerScreen(sourceId: String, entryId: String, episodeId: String, onBack: () -> Unit) {
+    app.inkwell.data.TrackReading(sourceId, entryId)
     val vm = inkViewModel("player/$sourceId/$entryId") { PlayerViewModel(it, sourceId, entryId, episodeId) }
     val c = LocalContainer.current
     val ink = LocalInk.current

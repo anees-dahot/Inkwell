@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: () -> Unit) {
+    app.inkwell.data.TrackReading(sourceId, entryId)
     val context = LocalContext.current
     val vm = inkViewModel("reader/$sourceId/$entryId") { ReaderViewModel(it, sourceId, entryId, episodeId, context.applicationContext) }
     val ink = LocalInk.current
@@ -77,6 +78,7 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
     val scope = rememberCoroutineScope()
     val nav = remember { ReaderNav() }
     val focus = remember { FocusRequester() }
+    val carry = remember { intArrayOf(-1, 0) } // (generation, item index) of the last viewed position
 
     val scale by prefs.scale.collectAsStateWithLifecycle()
     val bgPref by prefs.background.collectAsStateWithLifecycle()
@@ -85,7 +87,7 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
     val pageNum by prefs.pageNumber.collectAsStateWithLifecycle()
     val volumeKeys by prefs.volumeKeys.collectAsStateWithLifecycle()
     val gap by prefs.webtoonGap.collectAsStateWithLifecycle()
-    val brightness by prefs.brightness.collectAsStateWithLifecycle()
+    val brightness by ReaderSession.brightness.collectAsStateWithLifecycle()
     val cfg = ReaderConfig(scale, bgPref, tapZones, gap)
     val bgColor = when (bgPref) { ReaderBackground.BLACK -> Color.Black; ReaderBackground.WHITE -> Color.White; ReaderBackground.GRAY -> Color(0xFF3A3A3C) }
 
@@ -113,7 +115,7 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
         ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (overlay) ctl.show(WindowInsetsCompat.Type.systemBars()) else ctl.hide(WindowInsetsCompat.Type.systemBars())
     }
-    LaunchedEffect(showSettings, actionPage, vm.generation, vm.loading) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(showSettings, actionPage, vm.generation, vm.loading, vm.mode, overlay) { runCatching { focus.requestFocus() } }
 
     Box(
         Modifier.fillMaxSize().background(bgColor)
@@ -138,8 +140,11 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                 Box(Modifier.fillMaxWidth().aspectRatio(0.7f).shimmer())
             }
             else -> key(vm.generation, mode) {
-                var curIdx by remember { mutableIntStateOf(vm.initialItem) }
-                var lastIdx by remember { mutableIntStateOf(vm.initialItem) }
+                // Switching reading mode rebuilds this block: resume at the page being viewed, not the saved one.
+                val startIdx = remember { (if (carry[0] == vm.generation) carry[1] else vm.initialItem).coerceIn(0, items.lastIndex) }
+                var curIdx by remember { mutableIntStateOf(startIdx) }
+                var lastIdx by remember { mutableIntStateOf(startIdx) }
+                LaunchedEffect(curIdx) { carry[0] = vm.generation; carry[1] = curIdx }
                 var seekTo by remember { mutableStateOf<Int?>(null) }
                 val haptic = LocalHapticFeedback.current
                 val cur = items.getOrNull(curIdx)
@@ -172,11 +177,11 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
 
                 Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
                     if (mode == ReaderViewMode.WEBTOON) WebtoonReader(
-                        vm, vm.initialItem, seekTo, cfg, nav, { overlay = !overlay },
+                        vm, startIdx, seekTo, cfg, nav, { overlay = !overlay },
                         onVisible = { f, l -> curIdx = f; lastIdx = l },
                         onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
                     ) else PagedReader(
-                        vm, vertical = mode == ReaderViewMode.VERTICAL, rtl = mode == ReaderViewMode.RTL, startIndex = vm.initialItem,
+                        vm, vertical = mode == ReaderViewMode.VERTICAL, rtl = mode == ReaderViewMode.RTL, startIndex = startIdx,
                         seekTo = seekTo, cfg = cfg, nav = nav, toggle = { overlay = !overlay },
                         onIndex = { curIdx = it; lastIdx = it }, onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
                     )

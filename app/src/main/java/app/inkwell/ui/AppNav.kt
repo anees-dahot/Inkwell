@@ -8,6 +8,7 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
 import app.inkwell.data.model.ContentType
 import app.inkwell.ui.components.LocalAnimScope
@@ -23,6 +24,7 @@ import app.inkwell.ui.screens.PlayerScreen
 import app.inkwell.ui.screens.ReaderScreen
 import app.inkwell.ui.screens.WebViewScreen
 import app.inkwell.ui.screens.UpcomingScreen
+import app.inkwell.ui.screens.StatsScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +35,7 @@ import kotlinx.serialization.Serializable
 @Serializable object MainRoute
 @Serializable object UpcomingRoute
 @Serializable object DownloadsRoute
+@Serializable object StatsRoute
 @Serializable data class GlobalSearchRoute(val type: String, val query: String)
 @Serializable data class DetailsRoute(val sourceId: String, val entryId: String, val title: String, val coverUrl: String? = null)
 @Serializable data class ReaderRoute(val sourceId: String, val entryId: String, val episodeId: String)
@@ -58,11 +61,25 @@ fun AppNav() {
         }
     }
 
+    val launchEpisode by AppLaunch.openEpisode.collectAsState()
+    LaunchedEffect(launchEpisode) {
+        launchEpisode?.let { openEpisode(it.sourceId, it.entryId, it.episodeId); AppLaunch.openEpisode.value = null }
+    }
     val launchEntry by AppLaunch.openEntry.collectAsState()
     LaunchedEffect(launchEntry) {
         launchEntry?.let {
             nav.navigate(DetailsRoute(it.sourceId, it.entryId, it.title, it.coverUrl))
             AppLaunch.openEntry.value = null
+        }
+    }
+
+    val launchNovel by AppLaunch.openNovel.collectAsState()
+    LaunchedEffect(launchNovel) {
+        launchNovel?.let { t ->
+            val cur = nav.currentBackStackEntry
+            val same = cur?.destination?.hasRoute<NovelRoute>() == true && cur.toRoute<NovelRoute>().let { it.sourceId == t.sourceId && it.entryId == t.entryId }
+            if (!same) nav.navigate(NovelRoute(t.sourceId, t.entryId, t.episodeId))
+            AppLaunch.openNovel.value = null
         }
     }
 
@@ -83,6 +100,7 @@ fun AppNav() {
                         onOpenHistory = { openEpisode(it.sourceId, it.entryId, it.episodeId) },
                         onOpenUpcoming = { nav.navigate(UpcomingRoute) },
                         onOpenDownloads = { nav.navigate(DownloadsRoute) },
+                        onOpenStats = { nav.navigate(StatsRoute) },
                         onSearchAll = { t, q -> nav.navigate(GlobalSearchRoute(t.name, q)) },
                     )
                 }
@@ -123,6 +141,9 @@ fun AppNav() {
                     onBack = { nav.popBackStack() },
                     onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                 )
+            }
+            composable<StatsRoute> {
+                StatsScreen(onBack = { nav.popBackStack() }, onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) })
             }
             composable<DownloadsRoute> {
                 DownloadsScreen(

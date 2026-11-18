@@ -71,6 +71,9 @@ interface HistoryDao {
     @Query("SELECT * FROM HistoryItem WHERE sourceId=:s AND entryId=:e")
     fun observeEntry(s: String, e: String): Flow<HistoryItem?>
 
+    @Query("SELECT * FROM HistoryItem ORDER BY timestamp DESC LIMIT :n")
+    suspend fun recent(n: Int): List<HistoryItem>
+
     @Query("SELECT * FROM HistoryItem")
     suspend fun all(): List<HistoryItem>
 
@@ -223,4 +226,25 @@ interface DownloadDao {
 
     @Query("DELETE FROM DownloadItem WHERE status!='DONE'")
     suspend fun clearQueue()
+}
+
+@Dao
+interface StatsDao {
+    @Insert
+    suspend fun insert(s: ReadingSession)
+
+    @Query("SELECT * FROM ReadingSession ORDER BY startedAt")
+    fun observeSessions(): Flow<List<ReadingSession>>
+
+    @Query("SELECT * FROM ProgressItem WHERE read=1")
+    fun observeRead(): Flow<List<ProgressItem>>
+
+    @Query("SELECT sourceId, entryId, title FROM LibraryItem")
+    fun libraryTitles(): Flow<List<TitleRow>>
+
+    @Query("SELECT sourceId, entryId, entryTitle AS title FROM HistoryItem")
+    fun historyTitles(): Flow<List<TitleRow>>
+
+    @Query("DELETE FROM ReadingSession")
+    suspend fun clearSessions()
 }

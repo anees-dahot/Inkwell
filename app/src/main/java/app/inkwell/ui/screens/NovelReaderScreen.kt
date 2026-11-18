@@ -61,7 +61,7 @@ import app.inkwell.ui.motion.LocalReducedMotion
 import app.inkwell.ui.motion.Motion
 import app.inkwell.ui.motion.pressable
 import app.inkwell.ui.screens.novel.NovelSettingsSheet
-import app.inkwell.ui.screens.novel.NovelTts
+import app.inkwell.ui.screens.novel.NovelTtsPlayer
 import app.inkwell.ui.screens.novel.novelFontFamily
 import app.inkwell.ui.screens.novel.novelPalette
 import app.inkwell.ui.theme.InkType
@@ -170,55 +170,30 @@ class NovelReaderViewModel(
 
 private class RItem(val ci: Int, val kind: Int, val pi: Int) // kind: 0 header, 1 paragraph, 2 footer
 
-/** Drives text-to-speech across paragraphs and chapters. */
-private class TtsDriver(
-    val vm: NovelReaderViewModel, val tts: NovelTts, val scope: CoroutineScope, val prefs: () -> app.inkwell.data.NovelPrefs,
-) {
-    var state by mutableIntStateOf(0) // 0 idle, 1 playing, 2 paused
-    var pos by mutableStateOf<Pair<String, Int>?>(null)
-    val active get() = state != 0
+/** Reader-side facade over the process-wide [NovelTtsPlayer] (which keeps speaking after the screen is gone). */
+private class TtsDriver(val vm: NovelReaderViewModel, val ctx: android.content.Context) {
+    private val p = NovelTtsPlayer
+    val state get() = p.state
+    /** Spoken position, only when the playing book is the one shown here. */
+    val pos get() = if (vm.entry?.let { p.isFor(it.sourceId, it.id) } == true) p.pos else null
+    val active get() = p.active
 
-    fun start(epId: String, pi: Int) { pos = epId to pi; state = 1; speak() }
-
-    fun speak() {
-        val (e, p) = pos ?: return
-        val text = vm.chapters.firstOrNull { it.ep.id == e }?.paras?.getOrNull(p)
-        if (text == null) { stop(); return }
-        if (text.isBlank()) { step(1); return }
-        val pr = prefs()
-        tts.speak(text, pr.ttsRate, pr.ttsPitch) { if (state == 1) step(1) }
+    fun start(epId: String, pi: Int) {
+        val en = vm.entry ?: return
+        val paras = vm.chapters.firstOrNull { it.ep.id == epId }?.paras ?: return
+        p.start(ctx, en, vm.episodes, epId, pi, paras)
     }
-
-    fun step(d: Int) {
-        val (e, p) = pos ?: return
-        val chap = vm.chapters.firstOrNull { it.ep.id == e } ?: return stop()
-        val n = p + d
-        when {
-            n in chap.paras.indices -> { pos = e to n; if (state == 1) speak() }
-            n >= chap.paras.size -> scope.launch {
-                val next = vm.nextOf(chap.ep)
-                if (next == null || !vm.ensureLoaded(next, prefs().continuous)) { stop(); return@launch }
-                pos = next.id to 0
-                if (state == 1) speak()
-            }
-            else -> { // before the first paragraph
-                val ci = vm.chapters.indexOfFirst { it.ep.id == e }
-                val prev = vm.chapters.getOrNull(ci - 1)
-                pos = if (prev != null) prev.ep.id to prev.paras.lastIndex else e to 0
-                if (state == 1) speak()
-            }
-        }
-    }
-
-    fun pause() { tts.stop(); state = 2 }
-    fun resume() { state = 1; speak() }
-    fun restart() { if (state == 1) speak() }
-    fun stop() { tts.stop(); state = 0; pos = null }
+    fun step(d: Int) = p.step(d)
+    fun pause() = p.pause()
+    fun resume() = p.resume()
+    fun restart() = p.restart()
+    fun stop() = p.stop()
 }
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun NovelReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: () -> Unit) {
+    app.inkwell.data.TrackReading(sourceId, entryId)
     val c = LocalContainer.current
     val vm = inkViewModel("novelreader/$sourceId/$entryId") { NovelReaderViewModel(it, sourceId, entryId, episodeId) }
     val ink = LocalInk.current
@@ -235,9 +210,23 @@ fun NovelReaderScreen(sourceId: String, entryId: String, episodeId: String, onBa
     val scope = rememberCoroutineScope()
     val prefsNow by rememberUpdatedState(prefs)
 
-    val tts = remember { NovelTts(ctx) }
-    val driver = remember { TtsDriver(vm, tts, scope) { prefsNow } }
-    DisposableEffect(Unit) { onDispose { driver.stop(); tts.release() } }
+    val driver = remember { TtsDriver(vm, ctx.applicationContext) }
+    // Read-aloud keeps running after this screen is gone (foreground service); just detach.
+    DisposableEffect(Unit) {
+        NovelTtsPlayer.prepare(ctx)
+        NovelTtsPlayer.attached = true
+        onDispose { NovelTtsPlayer.attached = false; NovelTtsPlayer.releaseIfIdle() }
+    }
+    // Follow the service when it moves into another chapter while this screen is open.
+    var seenEp by remember { mutableStateOf(NovelTtsPlayer.pos?.first) }
+    LaunchedEffect(driver.pos?.first) {
+        val e = driver.pos?.first ?: run { seenEp = null; return@LaunchedEffect }
+        if (e == seenEp) return@LaunchedEffect
+        seenEp = e
+        if (vm.chapters.any { it.ep.id == e }) return@LaunchedEffect
+        if (prefsNow.continuous && vm.nextOf(vm.chapters.lastOrNull()?.ep)?.id == e) vm.appendNow()
+        else vm.openNow(e, driver.pos?.second ?: 0)
+    }
 
     LaunchedEffect(prefs.keepScreenOn) { view.keepScreenOn = prefs.keepScreenOn }
     DisposableEffect(Unit) {
@@ -423,7 +412,7 @@ fun NovelReaderScreen(sourceId: String, entryId: String, episodeId: String, onBa
                                 }
                                 BarIconButton(Icons.Outlined.Headphones, "Listen", if (driver.active) ink.accent else Color.White) {
                                     if (driver.active) driver.stop()
-                                    else if (tts.failed || (tts.ready && !tts.hasEngine)) {
+                                    else if (NovelTtsPlayer.tts.let { it == null || it.failed || (it.ready && !it.hasEngine) }) {
                                         android.widget.Toast.makeText(ctx, "No text-to-speech engine found. Install one (e.g. Speech Services by Google).", android.widget.Toast.LENGTH_LONG).show()
                                         runCatching {
                                             ctx.startActivity(android.content.Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -546,8 +535,7 @@ private fun ChapterFooter(
 private fun MiniPlayer(
     d: TtsDriver, chapters: List<Chap>, rate: Float, bottomInset: Boolean, hazeState: HazeState, onRate: (Float) -> Unit,
 ) {
-    val pos = d.pos
-    val ch = chapters.firstOrNull { it.ep.id == pos?.first }
+    val pos = NovelTtsPlayer.pos
     Box(Modifier.fillMaxWidth()) {
         Box(Modifier.matchParentSize().glass(hazeState, dark = true))
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -556,7 +544,7 @@ private fun MiniPlayer(
                 Column(Modifier.weight(1f)) {
                     Text("Listening", color = Color.White, style = InkType.callout, maxLines = 1)
                     Text(
-                        if (ch != null && pos != null) "${ch.ep.name} · ${pos.second + 1}/${ch.paras.size}" else "",
+                        if (pos != null) "${NovelTtsPlayer.chapterName} · ${pos.second + 1}/${NovelTtsPlayer.paraCount}" else "",
                         color = Color.White.copy(alpha = 0.6f), style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }

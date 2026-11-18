@@ -41,11 +41,13 @@ import app.inkwell.ui.theme.LocalInk
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun topContentPadding(): androidx.compose.ui.unit.Dp =
     WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarHeight
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (app.inkwell.data.db.HistoryItem) -> Unit = {}) {
     val c = LocalContainer.current
@@ -53,7 +55,13 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
-    val items by c.repo.library().collectAsStateWithLifecycle(emptyList())
+    val itemsOrNull by remember { c.repo.library().map<List<LibraryItem>, List<LibraryItem>?> { it } }.collectAsStateWithLifecycle(null)
+    val items = itemsOrNull ?: emptyList()
+    val refreshing by c.repo.refreshing.collectAsStateWithLifecycle()
+    val pullState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    var migrateQueue by remember { mutableStateOf<List<MigrateTarget>>(emptyList()) }
+    var migrateTotal by remember { mutableIntStateOf(0) }
+    val switchTab = LocalSwitchTab.current
     val unread by c.repo.unread().collectAsStateWithLifecycle(emptyList())
     val history by c.repo.history().collectAsStateWithLifecycle(emptyList())
     val categories by c.repo.categories().collectAsStateWithLifecycle(emptyList())
@@ -78,6 +86,7 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
 
     val grid = rememberLazyGridState()
     val collapsed by grid.rememberCollapsed()
+    OnTabReselect(0) { grid.animateScrollToItem(0) }
     val unreadMap = remember(unread) { unread.associate { libKey(it.sourceId, it.entryId) to it.unread } }
     val lastRead = remember(history) { history.associate { libKey(it.sourceId, it.entryId) to it.timestamp } }
     LaunchedEffect(categories) { if (catSel > 0 && categories.none { it.id == catSel }) catSel = -1L }
@@ -103,6 +112,18 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
     }
 
     Box(Modifier.fillMaxSize()) {
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = { scope.launch { c.repo.refreshUpdates() } },
+            state = pullState,
+            modifier = Modifier.fillMaxSize(),
+            indicator = {
+                androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                    state = pullState, isRefreshing = refreshing, color = ink.accent, containerColor = ink.card,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = topContentPadding()),
+                )
+            },
+        ) {
         LazyVerticalGrid(
             state = grid,
             columns = when (display) {
@@ -155,11 +176,15 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
                     Spacer(Modifier.height(4.dp))
                 }
             }
-            if (shown.isEmpty()) {
+            if (itemsOrNull == null) {
+                items(12) { SkeletonGridItem() }
+            } else if (shown.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyState(
                         if (items.isEmpty()) Icons.Outlined.CollectionsBookmark else Icons.Outlined.SearchOff,
                         if (items.isEmpty()) "Your library is empty.\nAdd titles from Browse." else "Nothing matches.",
+                        actionLabel = if (items.isEmpty()) "Browse sources" else null,
+                        onAction = if (items.isEmpty()) ({ switchTab(2) }) else null,
                     )
                 }
             }
@@ -175,6 +200,7 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
                     else -> LibraryCell(e, badge, isSel, display == LibraryDisplay.COMPACT, click, long)
                 }
             }
+        }
         }
         GlassTopBar(
             if (selecting) "${selected.size} selected" else "Library", collapsed || selecting, hazeState, Modifier.align(Alignment.TopCenter),
@@ -225,10 +251,23 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
                     android.widget.Toast.makeText(context, if (n == 0) "Nothing to download" else "Queued $n chapters", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
+            BarIconButton(Icons.Outlined.SwapHoriz, "Migrate to another source") {
+                val t = selItems.map { MigrateTarget(it.sourceId, it.entryId, it.title, it.coverUrl, ContentType.valueOf(it.type)) }
+                selected = emptySet(); migrateTotal = t.size; migrateQueue = t
+            }
             BarIconButton(Icons.Outlined.Delete, "Remove from library") { confirmRemove = true }
         }
     }
 
+    migrateQueue.firstOrNull()?.let { t ->
+        key(t.sourceId, t.entryId) {
+            MigrateDialog(
+                t, positionLabel = if (migrateTotal > 1) "${migrateTotal - migrateQueue.size + 1} of $migrateTotal" else null,
+                onDismiss = { migrateQueue = migrateQueue.drop(1) },
+                onMigrated = { _, _ -> migrateQueue = migrateQueue.drop(1) },
+            )
+        }
+    }
     if (pickCat) CategoryPickerDialog(
         "Move to category", categories,
         current = selItems.map { it.categoryId }.distinct().singleOrNull() ?: -1,

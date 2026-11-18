@@ -31,7 +31,7 @@ fun rememberNotificationPermission(): () -> Unit {
     return {
         if (Build.VERSION.SDK_INT >= 33 &&
             ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        ) { app.inkwell.AppLock.skipNextLock = true; launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
     }
 }
 

@@ -19,6 +19,35 @@ import java.io.File
 
 data class NewChapters(val item: LibraryItem, val episodes: List<Episode>)
 
+/**
+ * Canonical chapter order for the whole app: newest first. Sources disagree (ao3 is oldest-first),
+ * so numbers decide when present, else the date trend; otherwise the source order is kept.
+ */
+fun normalizeEpisodes(eps: List<Episode>): List<Episode> {
+    if (eps.size < 2) return eps
+    val nums = eps.map { it.number ?: nameNumber(it.name) }
+    if (nums.all { it != null } && nums.toSet().size > 1) {
+        return eps.withIndex().sortedByDescending { nums[it.index] }.map { it.value }
+    }
+    val a = nums.firstOrNull { it != null }
+    val b = nums.lastOrNull { it != null }
+    if (a != null && b != null && a != b) return if (a < b) eps.asReversed() else eps
+    val da = eps.firstNotNullOfOrNull { it.dateMillis }
+    val db = eps.lastNotNullOfOrNull { it.dateMillis }
+    if (da != null && db != null && da != db) return if (da < db) eps.asReversed() else eps
+    return eps
+}
+
+private val NAME_NUM = Regex("^\\s*(?:chapter|ch\\.?|episode|ep\\.?)?\\s*(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
+private fun nameNumber(name: String): Float? = NAME_NUM.find(name)?.groupValues?.get(1)?.toFloatOrNull()
+
+private inline fun <T, R : Any> List<T>.lastNotNullOfOrNull(f: (T) -> R?): R? {
+    for (i in indices.reversed()) f(this[i])?.let { return it }
+    return null
+}
+
+data class MigrateResult(val mappedRead: Int, val totalChapters: Int)
+
 class Repository(
     val registry: SourceRegistry, private val db: InkDatabase, val settings: Settings,
     private val appContext: Context, http: OkHttpClient,
@@ -60,7 +89,7 @@ class Repository(
     suspend fun episodes(sourceId: String, entryId: String, force: Boolean = false): List<Episode> {
         if (!force) episodeCache[key(sourceId, entryId)]?.let { return it }
         val eps = try {
-            registry.get(sourceId).episodes(entryId)
+            normalizeEpisodes(registry.get(sourceId).episodes(entryId))
         } catch (c: CancellationException) { throw c } catch (x: Exception) {
             offlineEpisodes(sourceId, entryId).takeIf { it.isNotEmpty() } ?: throw x
         }
@@ -144,6 +173,58 @@ class Repository(
             if ((prev?.read == true) == read && (prev != null || !read)) continue
             db.progress().upsert(ProgressItem(s, e, ep.id, if (read) prev?.page ?: 0 else 0, prev?.totalPages ?: 0, read, now))
         }
+    }
+
+    /**
+     * Moves a library entry to another source: category, bell, added date, read progress (by chapter number
+     * or name) and history carry over. [keepOld] leaves the old library entry in place. Throws before any
+     * change if the target's chapters cannot be loaded.
+     */
+    suspend fun migrate(oldS: String, oldE: String, to: Entry, keepOld: Boolean): MigrateResult {
+        val old = db.library().get(oldS, oldE)
+        val newEps = episodes(to.sourceId, to.id, force = true)
+        // old chapter id -> (number, name): cache first, then downloads, then (maybe dead) source
+        val oldInfo = HashMap<String, Pair<Float?, String>>()
+        db.downloads().forEntry(oldS, oldE).forEach { oldInfo[it.episodeId] = it.number to it.episodeName }
+        val oldCached = db.episodeCache().forEntry(oldS, oldE)
+        if (oldCached.isEmpty()) runCatching { episodes(oldS, oldE) }.getOrNull()?.forEach { oldInfo[it.id] = it.number to it.name }
+        oldCached.forEach { oldInfo[it.episodeId] = it.number to it.name }
+        fun match(id: String): Episode? {
+            val (n, name) = oldInfo[id] ?: return null
+            if (n != null) newEps.firstOrNull { it.number != null && kotlin.math.abs(it.number - n) < 0.001f }?.let { return it }
+            return newEps.firstOrNull { it.name.equals(name, true) }
+        }
+        if (db.library().get(to.sourceId, to.id) == null) {
+            db.library().insert(LibraryItem(
+                to.sourceId, to.id, to.title, to.coverUrl, to.type.name, old?.addedAt ?: System.currentTimeMillis(),
+                remind = old?.remind ?: false, categoryId = old?.categoryId ?: 0,
+            ))
+        }
+        cacheEpisodes(to.sourceId, to.id, newEps)
+        var mapped = 0
+        for (p in db.progress().all().filter { it.sourceId == oldS && it.entryId == oldE }) {
+            val t = match(p.episodeId) ?: continue
+            val cur = db.progress().get(to.sourceId, to.id, t.id)
+            if (cur != null && (cur.read || cur.updatedAt >= p.updatedAt)) continue
+            db.progress().upsert(p.copy(sourceId = to.sourceId, entryId = to.id, episodeId = t.id))
+            if (p.read) mapped++
+        }
+        db.history().get(oldS, oldE)?.let { h ->
+            match(h.episodeId)?.let { t ->
+                if (db.history().get(to.sourceId, to.id) == null)
+                    db.history().upsert(HistoryItem(to.sourceId, to.id, to.title, to.coverUrl, to.type.name, t.id, t.name, h.timestamp))
+            }
+        }
+        if (!keepOld) {
+            db.reminders().all().filter { it.sourceId == oldS && it.entryId == oldE }.forEach {
+                db.reminders().upsert(it.copy(sourceId = to.sourceId, entryId = to.id, title = to.title, coverUrl = to.coverUrl))
+            }
+            db.library().delete(oldS, oldE)
+            db.episodeCache().clear(oldS, oldE)
+            db.history().delete(oldS, oldE)
+        }
+        runCatching { app.inkwell.work.Scheduler.syncExpected(appContext) }
+        return MigrateResult(mapped, newEps.size)
     }
 
     // library: categories + bulk ops
@@ -291,6 +372,7 @@ class Repository(
     suspend fun getProgress(s: String, e: String, ep: String) = db.progress().get(s, e, ep)
 
     suspend fun saveProgress(entry: Entry, ep: Episode, page: Int, total: Int, read: Boolean) {
+        if (settings.incognito.value) return
         val prev = db.progress().get(entry.sourceId, entry.id, ep.id)
         db.progress().upsert(ProgressItem(entry.sourceId, entry.id, ep.id, page, total, read || prev?.read == true, System.currentTimeMillis()))
         db.history().upsert(HistoryItem(entry.sourceId, entry.id, entry.title, entry.coverUrl, entry.type.name, ep.id, ep.name, System.currentTimeMillis()))

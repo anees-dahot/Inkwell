@@ -9,6 +9,17 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.outlined.MarkChatRead
+import androidx.compose.material.icons.outlined.MarkChatUnread
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import app.inkwell.data.model.Episode
+import app.inkwell.ui.theme.CoverRadius
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.Text
@@ -57,6 +68,8 @@ fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit, onOp
     val ink = LocalInk.current
     val state = rememberPullToRefreshState()
     val top = topContentPadding()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    OnTabReselect(1) { list.animateScrollToItem(0) }
 
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(
@@ -77,10 +90,40 @@ fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit, onOp
                 contentPadding = PaddingValues(top = top, bottom = LocalBottomInset.current.calculateBottomPadding() + 16.dp),
             ) {
                 item { LargeTitle("Updates") }
-                if (rows.isEmpty()) item {
-                    EmptyState(Icons.Outlined.NotificationsNone, "No updates yet.\nPull down to refresh your library.")
+                if (rows.isEmpty() && refreshing) items(8) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(44.dp).aspectRatio(2f / 3f).clip(androidx.compose.foundation.shape.RoundedCornerShape(CoverRadius)).shimmer())
+                        Spacer(Modifier.width(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.width(180.dp).height(12.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).shimmer())
+                            Box(Modifier.width(120.dp).height(10.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp)).shimmer())
+                        }
+                    }
+                } else if (rows.isEmpty()) item {
+                    EmptyState(
+                        Icons.Outlined.NotificationsNone, "No updates yet.\nNew chapters from your library show up here.",
+                        actionLabel = "Refresh library", onAction = { scope.launch { c.repo.refreshUpdates() } },
+                    )
                 }
                 items(rows, key = { "${it.sourceId}/${it.entryId}/${it.episodeId}" }) { r ->
+                    val swipe = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { v ->
+                            if (v == SwipeToDismissBoxValue.StartToEnd) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                scope.launch { c.repo.markRead(r.sourceId, r.entryId, listOf(Episode(r.episodeId, r.name, null, r.dateMillis)), !r.isRead) }
+                            }
+                            false // always snap back; the row dims instead of disappearing
+                        },
+                    )
+                    SwipeToDismissBox(
+                        state = swipe, modifier = Modifier.animateItem(), enableDismissFromEndToStart = false,
+                        backgroundContent = {
+                            Box(Modifier.fillMaxSize().background(ink.accent).padding(start = 24.dp), contentAlignment = Alignment.CenterStart) {
+                                Icon(if (r.isRead) Icons.Outlined.MarkChatUnread else Icons.Outlined.MarkChatRead, if (r.isRead) "Mark unread" else "Mark read", tint = Color.White)
+                            }
+                        },
+                    ) {
+                    Column(Modifier.background(ink.bg)) {
                     Row(
                         Modifier.fillMaxWidth().alpha(if (r.isRead) 0.5f else 1f)
                             .pressable { onOpenEpisode(r) }.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -96,6 +139,8 @@ fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit, onOp
                         Text(relativeDate(r.dateMillis), style = InkType.caption, color = ink.secondary)
                     }
                     Hairline(startInset = 72.dp)
+                    }
+                    }
                 }
             }
         }

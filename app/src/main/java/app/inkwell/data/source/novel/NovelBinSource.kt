@@ -144,7 +144,8 @@ class NovelBinSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val chapters = fetchJson("chapters/$novelId.json")?.jsonArray.orEmpty()
             .mapNotNull { el ->
                 val o = el.jsonObject
-                val index = o["index"]?.asStringOrNull()?.toIntOrNull() ?: return@mapNotNull null
+                // older lists use "index", newer ones "tocIndex" (with "id" as a fallback)
+                val index = (o["index"] ?: o["tocIndex"] ?: o["id"])?.asStringOrNull()?.toIntOrNull() ?: return@mapNotNull null
                 val title = o["title"]?.asStringOrNull().orEmpty()
                 Triple(slug, index, title)
             }

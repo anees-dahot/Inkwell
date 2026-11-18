@@ -75,7 +75,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             ),
         )
         val b = NotificationCompat.Builder(applicationContext, Notifier.CH_DOWNLOADS)
-            .setSmallIcon(android.R.drawable.stat_sys_download).setOngoing(true).setOnlyAlertOnce(true)
+            .setSmallIcon(app.inkwell.R.drawable.ic_stat_inkwell).setOngoing(true).setOnlyAlertOnce(true)
             .setContentTitle(if (pending > 1) "Downloading $pending chapters" else "Downloading chapter")
             .setContentText(active.firstOrNull()?.let { "${it.entryTitle} · ${it.episodeName}" } ?: "Preparing…")
             .setProgress(total.coerceAtLeast(0), done, total == 0)

@@ -240,6 +240,9 @@ fun DetailsScreen(
     var showCategoryPicker by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf<String?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
+    var showMigrate by remember { mutableStateOf(false) }
+    val stuck by remember { derivedStateOf { list.firstVisibleItemIndex >= 1 } }
+    val stickyTop by androidx.compose.animation.core.animateDpAsState(if (stuck) top else 0.dp, label = "stickyTop")
     androidx.activity.compose.BackHandler(selecting) { vm.selected = emptySet() }
 
     Box(Modifier.fillMaxSize().background(ink.bg)) {
@@ -324,8 +327,8 @@ fun DetailsScreen(
                     }
                 }
             }
-            item {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            stickyHeader(key = "chapters-header") {
+                Row(Modifier.fillMaxWidth().background(ink.bg).padding(top = stickyTop).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         (if (vm.isVideo) "Episodes" else "Chapters") + if (vm.episodes.isNotEmpty()) " (${vm.episodes.size})" else "",
                         style = InkType.headline, color = ink.label, modifier = Modifier.weight(1f),
@@ -350,16 +353,21 @@ fun DetailsScreen(
                                 if (downloads.isNotEmpty()) DropdownMenuItem({ Text("Delete downloads") }, { menu = null; confirmDeleteAll = true })
                             }
                         }
-                        Box {
-                            BarIconButton(Icons.Outlined.MoreVert, "More", tint = ink.secondary) { menu = "more" }
-                            DropdownMenu(menu == "more", { menu = null }) {
+                    }
+                    if (vm.episodes.isNotEmpty() || inLib) Box {
+                        BarIconButton(Icons.Outlined.MoreVert, "More", tint = ink.secondary) { menu = "more" }
+                        DropdownMenu(menu == "more", { menu = null }) {
+                            if (vm.episodes.isNotEmpty()) {
                                 DropdownMenuItem({ Text("Mark all read") }, { menu = null; vm.markAllRead() })
                                 DropdownMenuItem({ Text("Mark all unread") }, { menu = null; vm.markRead(vm.episodes.map { it.id }, false) })
                             }
+                            if (inLib) DropdownMenuItem({ Text("Migrate to another source") }, { menu = null; showMigrate = true })
                         }
                     }
                 }
-                if (vm.isVideo) {
+            }
+            if (vm.isVideo) item {
+                run {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Showing latest uploads.", style = InkType.callout, color = ink.secondary)
                         FilledPill("Open full playlist in YouTube", filled = false) {
@@ -490,7 +498,7 @@ fun DetailsScreen(
                     BarIconButton(Icons.Outlined.Share, "Share") {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
                             .putExtra(Intent.EXTRA_SUBJECT, entry.title).putExtra(Intent.EXTRA_TEXT, entry.title + "\n" + url)
-                        context.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        app.inkwell.AppLock.skipNextLock = true; context.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     }
                 }
                 val openWebView = LocalOpenWebView.current
@@ -498,10 +506,16 @@ fun DetailsScreen(
                 if (base != null) BarIconButton(Icons.Outlined.Language, "Open in WebView") { openWebView(base) }
             },
         )
+        OfflineBanner(Modifier.align(Alignment.TopCenter))
     }
     if (showCategoryPicker) CategoryPickerDialog(
         "Add to category", categories,
         onPick = { showCategoryPicker = false; vm.addToLibrary(it) }, onDismiss = { showCategoryPicker = false },
+    )
+    if (showMigrate) MigrateDialog(
+        MigrateTarget(sourceId, entryId, entry.title, entry.coverUrl, entry.type),
+        onDismiss = { showMigrate = false },
+        onMigrated = { _, _ -> showMigrate = false; onBack() },
     )
     if (confirmDeleteAll) AlertDialog(
         onDismissRequest = { confirmDeleteAll = false },

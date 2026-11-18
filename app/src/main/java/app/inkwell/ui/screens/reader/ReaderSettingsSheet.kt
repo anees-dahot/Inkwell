@@ -50,7 +50,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, prefs: ReaderPrefs, onDismiss: () -
     val pageNum by prefs.pageNumber.collectAsStateWithLifecycle()
     val volume by prefs.volumeKeys.collectAsStateWithLifecycle()
     val gap by prefs.webtoonGap.collectAsStateWithLifecycle()
-    val bright by prefs.brightness.collectAsStateWithLifecycle()
+    val bright by ReaderSession.brightness.collectAsStateWithLifecycle()
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ink.bg) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -76,9 +76,9 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, prefs: ReaderPrefs, onDismiss: () -
                 SwitchRow("Page number overlay", pageNum, prefs::setPageNumber)
                 SwitchRow("Volume keys turn pages", volume, prefs::setVolumeKeys)
                 if (mode == ReaderViewMode.WEBTOON) SwitchRow("Gap between pages", gap, prefs::setWebtoonGap)
-                SwitchRow("Custom brightness", bright >= 0f) { prefs.setBrightness(if (it) 0.5f else -1f) }
+                SwitchRow("Custom brightness", bright >= 0f) { ReaderSession.brightness.value = if (it) 0.5f else -1f }
                 if (bright >= 0f) Slider(
-                    value = bright, onValueChange = { prefs.setBrightness(it.coerceAtLeast(0.01f)) }, valueRange = 0.01f..1f,
+                    value = bright, onValueChange = { ReaderSession.brightness.value = it.coerceAtLeast(0.01f) }, valueRange = 0.01f..1f,
                     colors = SliderDefaults.colors(thumbColor = androidx.compose.ui.graphics.Color.White, activeTrackColor = ink.accent),
                 )
             }

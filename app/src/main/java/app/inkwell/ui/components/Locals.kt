@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +21,19 @@ val LocalContainer = compositionLocalOf<AppContainer> { error("no container") }
 @OptIn(ExperimentalSharedTransitionApi::class)
 val LocalSharedScope = compositionLocalOf<SharedTransitionScope?> { null }
 val LocalAnimScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+/** Emits the tab index when the already-active bottom tab is tapped again (scroll to top). */
+val LocalTabReselect = compositionLocalOf<kotlinx.coroutines.flow.SharedFlow<Int>> { kotlinx.coroutines.flow.MutableSharedFlow() }
+
+/** Switches the bottom tab (0 Library, 1 Updates, 2 Browse, 3 History, 4 More). */
+val LocalSwitchTab = compositionLocalOf<(Int) -> Unit> { {} }
+
+@Composable
+fun OnTabReselect(index: Int, action: suspend () -> Unit) {
+    val flow = LocalTabReselect.current
+    val act by androidx.compose.runtime.rememberUpdatedState(action)
+    androidx.compose.runtime.LaunchedEffect(flow) { flow.collect { if (it == index) act() } }
+}
 
 /** Extra bottom padding for content that sits under the glass tab bar. */
 val LocalBottomInset = compositionLocalOf { PaddingValues(0.dp) }
