@@ -28,9 +28,7 @@ class NovelUpdatesSource(client: OkHttpClient) : ScraperNovelSource(client) {
         client.newCall(request(url)).execute().use { r ->
             check(r.isSuccessful) { "$name HTTP ${r.code}" }
             val body = r.body?.string().orEmpty()
-            check(!body.contains("_cf_chl_opt")) {
-                "$name: Cloudflare protection detected; open the source in a WebView first."
-            }
+            if (body.contains("_cf_chl_opt")) throw CloudflareException(url)
             body to r.request.url.toString()
         }
 
@@ -106,11 +104,9 @@ class NovelUpdatesSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 "mypostid" to novelId,
             ),
         )
-        check(!chaptersDoc.html().contains("_cf_chl_opt")) {
-            "$name: Cloudflare protection on the chapter list; open in a WebView first."
-        }
+        if (chaptersDoc.html().contains("_cf_chl_opt")) throw CloudflareException(baseUrl)
         check(chaptersDoc.text().trim() != "0") {
-            "$name: refused the chapter list request; open in a WebView first."
+            "$name: refused the chapter list request; use Open in WebView, then retry."
         }
 
         val chapters = chaptersDoc.select("li.sp_li_chp").mapNotNull { li ->
@@ -163,7 +159,7 @@ class NovelUpdatesSource(client: OkHttpClient) : ScraperNovelSource(client) {
             "un instant...", "you are being redirected...",
         )
         check(d.title().trim().lowercase() !in blockedTitles) {
-            "$name: captcha detected on the chapter host; open in a WebView."
+            "$name: captcha detected on the chapter host; use Open in WebView."
         }
 
         val isWordPress = listOf(

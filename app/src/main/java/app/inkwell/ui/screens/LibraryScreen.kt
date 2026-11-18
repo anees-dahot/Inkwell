@@ -5,6 +5,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import app.inkwell.ui.motion.pressable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -21,10 +27,15 @@ fun topContentPadding(): androidx.compose.ui.unit.Dp =
     WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TopBarHeight
 
 @Composable
-fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
+fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (app.inkwell.data.db.HistoryItem) -> Unit = {}) {
     val c = LocalContainer.current
     val items by c.repo.library().collectAsStateWithLifecycle(emptyList())
     val unread by c.repo.unread().collectAsStateWithLifecycle(emptyList())
+    val history by c.repo.history().collectAsStateWithLifecycle(emptyList())
+    val cont = remember(history, items) {
+        val keys = items.map { it.sourceId + "/" + it.entryId }.toSet()
+        history.firstOrNull { (it.sourceId + "/" + it.entryId) in keys }
+    }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val grid = rememberLazyGridState()
     val collapsed by grid.rememberCollapsed()
@@ -52,6 +63,24 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
                 Column {
                     LargeTitle("Library", Modifier.padding(horizontal = 0.dp))
                     Spacer(Modifier.height(8.dp))
+                    cont?.let { h ->
+                        val ink = LocalInk.current
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(app.inkwell.ui.theme.CardRadius))
+                                .background(ink.card).pressable { onContinue(h) }.padding(10.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Cover(h.coverUrl, Modifier.width(44.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Continue reading", style = app.inkwell.ui.theme.InkType.caption, color = ink.accent)
+                                Text(h.entryTitle, style = app.inkwell.ui.theme.InkType.headline, color = ink.label, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Text(h.episodeName, style = app.inkwell.ui.theme.InkType.callout, color = ink.secondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.Outlined.PlayArrow, null, tint = ink.accent)
+                        }
+                    }
                     SegmentedControl(listOf("All", "Manga", "Novels", "Donghua"), filter, { filter = it })
                     Spacer(Modifier.height(4.dp))
                 }

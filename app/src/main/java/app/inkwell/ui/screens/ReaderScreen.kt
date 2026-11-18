@@ -175,7 +175,7 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
         val ep = vm.current
         when {
             vm.error != null && vm.pages.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                ErrorState(vm.error!!, onRetry = { if (vm.episodes.isEmpty()) vm.start() else vm.open(ep?.id ?: episodeId) })
+                ErrorState(vm.error!!, webViewUrl = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl, onRetry = { if (vm.episodes.isEmpty()) vm.start() else vm.open(ep?.id ?: episodeId) })
             }
             vm.loading || ep == null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Box(Modifier.fillMaxWidth().aspectRatio(0.7f).shimmer())

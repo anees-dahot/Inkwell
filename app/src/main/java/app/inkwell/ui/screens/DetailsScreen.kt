@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Inbox
@@ -92,6 +93,17 @@ class DetailsViewModel(
         }
     }
 
+    val remind = c.repo.observeRemind(sourceId, entryId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleRemind(ctx: android.content.Context) {
+        viewModelScope.launch {
+            c.repo.setRemind(sourceId, entryId, !remind.value)
+            app.inkwell.work.Scheduler.syncExpected(ctx.applicationContext)
+        }
+    }
+
+    fun markAllRead() { viewModelScope.launch { c.repo.markAllRead(sourceId, entryId, episodes) } }
+
     fun toggleLibrary() {
         viewModelScope.launch {
             if (inLibrary.value) c.repo.removeFromLibrary(sourceId, entryId) else c.repo.addToLibrary(entry)
@@ -125,6 +137,8 @@ fun DetailsScreen(
     val list = rememberLazyListState()
     val collapsed by list.rememberCollapsed(thresholdDp = 220.dp)
     val inLib by vm.inLibrary.collectAsStateWithLifecycle()
+    val remind by vm.remind.collectAsStateWithLifecycle()
+    val askNotif = rememberNotificationPermission()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
@@ -177,6 +191,11 @@ fun DetailsScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 vm.toggleLibrary()
                             }
+                            if (inLib) ReminderBell(remind) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (!remind) askNotif()
+                                vm.toggleRemind(context)
+                            }
                             resume?.let { (ep, resuming) ->
                                 FilledPill(if (resuming) "Resume" else "Start", filled = true) { onOpenEpisode(entry, ep) }
                             }
@@ -205,6 +224,10 @@ fun DetailsScreen(
                         (if (vm.isVideo) "Episodes" else "Chapters") + if (vm.episodes.isNotEmpty()) " (${vm.episodes.size})" else "",
                         style = InkType.headline, color = ink.label, modifier = Modifier.weight(1f),
                     )
+                    if (vm.episodes.isNotEmpty()) Text(
+                        "Mark all read", style = InkType.callout, color = ink.accent,
+                        modifier = Modifier.pressable { vm.markAllRead() }.padding(vertical = 4.dp),
+                    )
                 }
                 if (vm.isVideo) {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -217,7 +240,7 @@ fun DetailsScreen(
                 }
             }
             if (vm.error != null && vm.episodes.isEmpty()) {
-                item { ErrorState(vm.error!!, vm::load) }
+                item { ErrorState(vm.error!!, vm::load, webViewUrl = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl) }
             } else if (vm.loading && vm.episodes.isEmpty()) {
                 items(6) {
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(56.dp).clip(RoundedCornerShape(CardRadius)).shimmer())
@@ -265,6 +288,11 @@ fun DetailsScreen(
         GlassTopBar(
             entry.title, collapsed, hazeState, Modifier.align(Alignment.TopCenter),
             leading = { BarIconButton(Icons.AutoMirrored.Outlined.ArrowBackIos, "Back", onClick = onBack) },
+            trailing = {
+                val openWebView = LocalOpenWebView.current
+                val base = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl
+                if (base != null) BarIconButton(Icons.Outlined.Language, "Open in WebView") { openWebView(base) }
+            },
         )
     }
 }

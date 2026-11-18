@@ -12,8 +12,7 @@ import java.net.URLEncoder
 
 /**
  * DaoTekno (daotekno.com) — a custom PHP reader serving the DaoTranslate.com
- * catalog. The site refuses WebView-style User-Agents and gates chapter pages
- * on UA, so the app's own UA is kept (no override here).
+ * catalog. Uses the shared WebView UA (minus "; wv") so cf_clearance matches.
  */
 class DaoteknoSource(client: OkHttpClient) : ScraperNovelSource(client) {
     override val id = "daotekno"
@@ -43,6 +42,7 @@ class DaoteknoSource(client: OkHttpClient) : ScraperNovelSource(client) {
                     continue
                 }
             }
+            if (res.code == 403 || res.code == 503) throw CloudflareException(url)
             check(res.isSuccessful) { "$name HTTP ${res.code}" }
             return@withContext res.body?.string().orEmpty()
         }

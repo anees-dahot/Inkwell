@@ -108,8 +108,22 @@ fun EmptyState(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier, webViewUrl: String? = null) {
     val ink = LocalInk.current
+    val openWebView = LocalOpenWebView.current
+    val isCf = webViewUrl != null && (message.contains("cloudflare", true) || message.contains("HTTP 403") || message.contains("HTTP 503"))
+    var opened by remember { mutableStateOf(false) }
+    if (isCf) {
+        val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        val retry by rememberUpdatedState(onRetry)
+        DisposableEffect(owner) {
+            val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME && opened) { opened = false; retry() }
+            }
+            owner.lifecycle.addObserver(obs)
+            onDispose { owner.lifecycle.removeObserver(obs) }
+        }
+    }
     Column(
         modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -119,8 +133,15 @@ fun ErrorState(message: String, onRetry: () -> Unit, modifier: Modifier = Modifi
         Text(message, style = InkType.callout, color = ink.secondary, textAlign = TextAlign.Center, maxLines = 3)
         Spacer(Modifier.height(16.dp))
         FilledPill("Retry", onClick = onRetry)
+        if (isCf) {
+            Spacer(Modifier.height(10.dp))
+            FilledPill("Open in WebView", filled = false) { opened = true; openWebView(webViewUrl!!) }
+        }
     }
 }
+
+/** Opens the in-app WebView (Cloudflare check / browsing) for a URL. Provided in AppNav. */
+val LocalOpenWebView = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 @Composable
 fun FilledPill(text: String, modifier: Modifier = Modifier, filled: Boolean = true, onClick: () -> Unit) {

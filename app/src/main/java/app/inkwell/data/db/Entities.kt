@@ -1,8 +1,11 @@
 package app.inkwell.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(primaryKeys = ["sourceId", "entryId"])
 data class LibraryItem(
     val sourceId: String,
@@ -11,9 +14,17 @@ data class LibraryItem(
     val coverUrl: String?,
     val type: String,
     val addedAt: Long,
+    /** Date of the newest known chapter. */
+    val lastChapterDate: Long? = null,
+    val lastChapterNumber: Float? = null,
+    /** Estimated next release (local midnight millis); null = unknown. */
+    val expectedNext: Long? = null,
+    /** Bell toggle: notify on new chapters + on the expected release day. */
+    @ColumnInfo(defaultValue = "0") val remind: Boolean = false,
 )
 
 /** Per chapter/episode progress. */
+@Serializable
 @Entity(primaryKeys = ["sourceId", "entryId", "episodeId"])
 data class ProgressItem(
     val sourceId: String,
@@ -26,6 +37,7 @@ data class ProgressItem(
 )
 
 /** Latest activity per entry (Mihon-style history). */
+@Serializable
 @Entity(primaryKeys = ["sourceId", "entryId"])
 data class HistoryItem(
     val sourceId: String,
@@ -47,6 +59,21 @@ data class CachedEpisode(
     val name: String,
     val number: Float?,
     val dateMillis: Long?,
+)
+
+/** User-set weekly reminder. [weekday] uses java.util.Calendar constants (1=Sunday..7=Saturday). */
+@Serializable
+@Entity
+data class CustomReminder(
+    @PrimaryKey val id: String,
+    val sourceId: String,
+    val entryId: String,
+    val title: String,
+    val coverUrl: String?,
+    val weekday: Int,
+    val hour: Int,
+    val minute: Int,
+    val enabled: Boolean,
 )
 
 @Entity

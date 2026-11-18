@@ -35,7 +35,7 @@ abstract class ScraperSource(protected val client: OkHttpClient) {
     protected open val headers: Map<String, String> = emptyMap()
 
     /** UA for this site; some sites reject unknown UAs. */
-    protected open val userAgent: String = MangaDexSource.UA
+    protected open val userAgent: String get() = globalUserAgent
 
     protected val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -49,7 +49,15 @@ abstract class ScraperSource(protected val client: OkHttpClient) {
 
     protected suspend fun Call.bodyString(): String = withContext(Dispatchers.IO) {
         execute().use { r ->
-            check(r.isSuccessful) { "$name HTTP ${r.code}" }
+            if (!r.isSuccessful) {
+                if (r.code == 403 || r.code == 503) {
+                    val snippet = runCatching { r.body?.string() }.getOrNull()
+                    if (Cloudflare.isChallenge(r.code, r.header("Server"), r.header("cf-mitigated"), snippet)) {
+                        throw CloudflareException(r.request.url.toString())
+                    }
+                }
+                error("$name HTTP ${r.code}")
+            }
             r.body?.string().orEmpty()
         }
     }
@@ -127,6 +135,9 @@ abstract class ScraperSource(protected val client: OkHttpClient) {
 
     companion object {
         val UA = MangaDexSource.UA
+
+        /** UA sent by scraper sources; set at startup to the WebView UA so cf_clearance stays valid. */
+        @Volatile var globalUserAgent: String = MangaDexSource.UA
     }
 }
 

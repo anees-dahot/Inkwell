@@ -126,7 +126,7 @@ class WebnovelSource(client: OkHttpClient) : ScraperNovelSource(client) {
             status = code
         }
         throw IllegalStateException(
-            "Webnovel: HTTP $status for $url (Cloudflare? open the novel in WebView, then retry)"
+            "Webnovel: HTTP $status for $url (Cloudflare? use Open in WebView, then retry)"
         )
     }
 

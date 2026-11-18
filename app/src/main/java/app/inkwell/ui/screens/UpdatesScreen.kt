@@ -5,7 +5,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -44,8 +46,9 @@ fun relativeDate(millis: Long?): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit) {
+fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit, onOpenUpcoming: () -> Unit = {}) {
     val c = LocalContainer.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val rows by c.repo.updates().collectAsStateWithLifecycle(emptyList())
     val refreshing by c.repo.refreshing.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -96,6 +99,12 @@ fun UpdatesScreen(hazeState: HazeState, onOpenEpisode: (UpdateRow) -> Unit) {
                 }
             }
         }
-        GlassTopBar("Updates", collapsed, hazeState, Modifier.align(Alignment.TopCenter))
+        GlassTopBar(
+            "Updates", collapsed, hazeState, Modifier.align(Alignment.TopCenter),
+            trailing = {
+                BarIconButton(Icons.Outlined.Refresh, "Update library now") { app.inkwell.work.Scheduler.updateNow(ctx) }
+                BarIconButton(Icons.Outlined.CalendarMonth, "Upcoming releases", onClick = onOpenUpcoming)
+            },
+        )
     }
 }

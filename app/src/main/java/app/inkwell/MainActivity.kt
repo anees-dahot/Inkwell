@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val container = (application as InkwellApp).container
         readReduced()
+        AppLaunch.handle(intent)
         setContent {
             val theme by container.settings.theme.collectAsStateWithLifecycle()
             val dark = when (theme) {
@@ -48,6 +49,12 @@ class MainActivity : ComponentActivity() {
                 InkwellTheme(dark) { AppNav() }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        AppLaunch.handle(intent)
     }
 
     override fun onResume() {

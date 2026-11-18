@@ -19,12 +19,21 @@ import app.inkwell.ui.screens.DetailsScreen
 import app.inkwell.ui.screens.NovelReaderScreen
 import app.inkwell.ui.screens.PlayerScreen
 import app.inkwell.ui.screens.ReaderScreen
+import app.inkwell.ui.screens.WebViewScreen
+import app.inkwell.ui.screens.UpcomingScreen
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import app.inkwell.AppLaunch
+import app.inkwell.ui.components.LocalOpenWebView
 import kotlinx.serialization.Serializable
 
 @Serializable object MainRoute
+@Serializable object UpcomingRoute
 @Serializable data class DetailsRoute(val sourceId: String, val entryId: String, val title: String, val coverUrl: String? = null)
 @Serializable data class ReaderRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class NovelRoute(val sourceId: String, val entryId: String, val episodeId: String)
+@Serializable data class WebViewRoute(val url: String)
 @Serializable data class PlayerRoute(val sourceId: String, val entryId: String, val episodeId: String)
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -45,6 +54,15 @@ fun AppNav() {
         }
     }
 
+    val launchEntry by AppLaunch.openEntry.collectAsState()
+    LaunchedEffect(launchEntry) {
+        launchEntry?.let {
+            nav.navigate(DetailsRoute(it.sourceId, it.entryId, it.title, it.coverUrl))
+            AppLaunch.openEntry.value = null
+        }
+    }
+
+    CompositionLocalProvider(LocalOpenWebView provides { u: String -> nav.navigate(WebViewRoute(u)) }) {
     SharedTransitionLayout {
         NavHost(
             nav, startDestination = MainRoute,
@@ -59,6 +77,7 @@ fun AppNav() {
                         onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                         onOpenUpdate = { openEpisode(it.sourceId, it.entryId, it.episodeId) },
                         onOpenHistory = { openEpisode(it.sourceId, it.entryId, it.episodeId) },
+                        onOpenUpcoming = { nav.navigate(UpcomingRoute) },
                     )
                 }
             }
@@ -93,6 +112,16 @@ fun AppNav() {
                 val r = e.toRoute<PlayerRoute>()
                 PlayerScreen(r.sourceId, r.entryId, r.episodeId, onBack = { nav.popBackStack() })
             }
+            composable<UpcomingRoute> {
+                UpcomingScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
+                )
+            }
+            composable<WebViewRoute> { e ->
+                WebViewScreen(e.toRoute<WebViewRoute>().url, onBack = { nav.popBackStack() })
+            }
         }
+    }
     }
 }

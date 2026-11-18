@@ -20,6 +20,7 @@ import app.inkwell.ui.theme.InkType
 import app.inkwell.ui.theme.LocalInk
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
 
 private val LANGS = listOf(
     "en" to "English", "es" to "Spanish", "es-la" to "Spanish (LATAM)", "fr" to "French", "pt-br" to "Portuguese (BR)",
@@ -36,7 +37,23 @@ private fun SettingRow(label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MoreScreen(hazeState: HazeState) {
+private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = InkType.body, color = LocalInk.current.label, modifier = Modifier.weight(1f))
+        InkSwitch(checked, onChange)
+    }
+}
+
+@Composable
+private fun ActionRow(label: String, onClick: () -> Unit) {
+    Text(
+        label, style = InkType.body, color = LocalInk.current.accent,
+        modifier = Modifier.fillMaxWidth().pressable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+    )
+}
+
+@Composable
+fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}) {
     val c = LocalContainer.current
     val s = c.settings
     val theme by s.theme.collectAsStateWithLifecycle()
@@ -47,6 +64,42 @@ fun MoreScreen(hazeState: HazeState) {
     val collapsed by list.rememberCollapsed()
     val ink = LocalInk.current
     var langDialog by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val hours by s.updateHours.collectAsStateWithLifecycle()
+    val wifiOnly by s.updateWifiOnly.collectAsStateWithLifecycle()
+    val charging by s.updateCharging.collectAsStateWithLifecycle()
+    val askNotif = rememberNotificationPermission()
+    var message by remember { mutableStateOf<String?>(null) }
+    val intervals = listOf(0, 6, 12, 24)
+    val exporter = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) scope.launch {
+            message = runCatching {
+                val text = c.repo.exportBackup()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray()) }
+                }
+                "Backup saved."
+            }.getOrElse { "Export failed: ${it.message}" }
+        }
+    }
+    val importer = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) scope.launch {
+            message = runCatching {
+                val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ctx.contentResolver.openInputStream(uri)!!.use { String(it.readBytes()) }
+                }
+                val r = c.repo.importBackup(text)
+                app.inkwell.work.Scheduler.syncAll(ctx)
+                scope.launch { c.repo.refreshLibrary() }
+                "Restored ${r.library} titles, ${r.progress} progress entries, ${r.history} history items, ${r.reminders} reminders."
+            }.getOrElse { "Import failed: ${it.message}" }
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -61,6 +114,34 @@ fun MoreScreen(hazeState: HazeState) {
                     SettingRow("Theme") {
                         SegmentedControl(listOf("System", "Light", "Dark"), theme.ordinal, { s.setTheme(ThemeMode.entries[it]) })
                     }
+                }
+            }
+            item { SectionHeader("Library updates") }
+            item {
+                GroupedCard {
+                    SettingRow("Check for new chapters") {
+                        SegmentedControl(listOf("Off", "6 hours", "12 hours", "24 hours"), intervals.indexOf(hours).coerceAtLeast(0), {
+                            s.setUpdateHours(intervals[it])
+                            if (intervals[it] > 0) askNotif()
+                            app.inkwell.work.Scheduler.syncPeriodic(ctx, s)
+                        })
+                    }
+                    Hairline()
+                    ToggleRow("Only on Wi-Fi", wifiOnly) { s.setUpdateWifiOnly(it); app.inkwell.work.Scheduler.syncPeriodic(ctx, s) }
+                    Hairline()
+                    ToggleRow("Only while charging", charging) { s.setUpdateCharging(it); app.inkwell.work.Scheduler.syncPeriodic(ctx, s) }
+                    Hairline()
+                    ActionRow("Update library now") { askNotif(); app.inkwell.work.Scheduler.updateNow(ctx); message = "Updating library…" }
+                    Hairline()
+                    ActionRow("Upcoming releases & reminders", onClick = onOpenUpcoming)
+                }
+            }
+            item { SectionHeader("Backup") }
+            item {
+                GroupedCard {
+                    ActionRow("Export backup") { exporter.launch("inkwell-backup.json") }
+                    Hairline()
+                    ActionRow("Restore from backup") { importer.launch(arrayOf("application/json", "*/*")) }
                 }
             }
             item { SectionHeader("Manga") }
@@ -95,6 +176,13 @@ fun MoreScreen(hazeState: HazeState) {
             }
         }
         GlassTopBar("More", collapsed, hazeState, Modifier.align(Alignment.TopCenter))
+    }
+
+    message?.let { m ->
+        AlertDialog(
+            onDismissRequest = { message = null }, text = { Text(m) },
+            confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } },
+        )
     }
 
     if (langDialog) AlertDialog(

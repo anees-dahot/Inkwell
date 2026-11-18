@@ -20,6 +20,8 @@ class InkwellApp : Application(), SingletonImageLoader.Factory {
         // MangaDex is TLS 1.3-only; Android < 10 lacks it natively -> use bundled Conscrypt
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) Security.insertProviderAt(Conscrypt.newProvider(), 1)
         container = AppContainer(this)
+        app.inkwell.work.Notifier.ensureChannels(this)
+        app.inkwell.work.Scheduler.syncAll(this)
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

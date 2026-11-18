@@ -43,12 +43,17 @@ fun MainShell(
     onOpenEntry: (Entry) -> Unit,
     onOpenUpdate: (UpdateRow) -> Unit,
     onOpenHistory: (HistoryItem) -> Unit,
+    onOpenUpcoming: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val hazeState = remember { HazeState() }
     val holder = rememberSaveableStateHolder()
     val reduced = LocalReducedMotion.current
     val ink = LocalInk.current
+    val launchTab by app.inkwell.AppLaunch.openTab.collectAsState()
+    LaunchedEffect(launchTab) {
+        launchTab?.let { tab = it.coerceIn(0, TABS.lastIndex); app.inkwell.AppLaunch.openTab.value = null }
+    }
     val barHeight = 49.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(Modifier.fillMaxSize().background(ink.bg)) {
@@ -56,11 +61,11 @@ fun MainShell(
             Crossfade(tab, animationSpec = Motion.Default.specFor(reduced), label = "tabs") { t ->
                 holder.SaveableStateProvider(t) {
                     when (t) {
-                        0 -> LibraryScreen(hazeState, onOpenEntry)
-                        1 -> UpdatesScreen(hazeState, onOpenUpdate)
+                        0 -> LibraryScreen(hazeState, onOpenEntry, onOpenHistory)
+                        1 -> UpdatesScreen(hazeState, onOpenUpdate, onOpenUpcoming)
                         2 -> BrowseScreen(hazeState, onOpenEntry)
                         3 -> HistoryScreen(hazeState, onOpenHistory)
-                        else -> MoreScreen(hazeState)
+                        else -> MoreScreen(hazeState, onOpenUpcoming)
                     }
                 }
             }

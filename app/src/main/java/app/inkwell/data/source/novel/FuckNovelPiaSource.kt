@@ -39,18 +39,8 @@ class FuckNovelPiaSource(client: OkHttpClient) : ScraperNovelSource(client) {
         }
         response.use { r ->
             if (!r.isSuccessful) {
-                val message = when (r.code) {
-                    403, 503 ->
-                        if (isChapter) {
-                            "Cloudflare check on this chapter (HTTP ${r.code}). Tap WebView on this screen, " +
-                                "wait for the chapter to load, then go back and retry."
-                        } else {
-                            "Cloudflare protection detected (HTTP ${r.code}). Open the source in WebView, " +
-                                "complete the check, then try again."
-                        }
-                    else -> "FuckNovelpia returned HTTP ${r.code}"
-                }
-                throw IllegalStateException(message)
+                if (r.code == 403 || r.code == 503) throw CloudflareException(r.request.url.toString())
+                throw IllegalStateException("FuckNovelpia returned HTTP ${r.code}")
             }
             r.body?.string().orEmpty()
         }

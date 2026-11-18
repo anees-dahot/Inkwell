@@ -17,6 +17,21 @@ interface LibraryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: LibraryItem)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(item: LibraryItem)
+
+    @Query("SELECT * FROM LibraryItem WHERE sourceId=:s AND entryId=:e")
+    suspend fun get(s: String, e: String): LibraryItem?
+
+    @Query("UPDATE LibraryItem SET lastChapterDate=:last, lastChapterNumber=:num, expectedNext=:next WHERE sourceId=:s AND entryId=:e")
+    suspend fun updateStats(s: String, e: String, last: Long?, num: Float?, next: Long?)
+
+    @Query("UPDATE LibraryItem SET remind=:on WHERE sourceId=:s AND entryId=:e")
+    suspend fun setRemind(s: String, e: String, on: Boolean)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM LibraryItem WHERE sourceId=:s AND entryId=:e AND remind=1)")
+    fun observeRemind(s: String, e: String): Flow<Boolean>
+
     @Query("DELETE FROM LibraryItem WHERE sourceId=:s AND entryId=:e")
     suspend fun delete(s: String, e: String)
 
@@ -35,6 +50,9 @@ interface ProgressDao {
     @Query("SELECT * FROM ProgressItem WHERE sourceId=:s AND entryId=:e AND episodeId=:ep")
     suspend fun get(s: String, e: String, ep: String): ProgressItem?
 
+    @Query("SELECT * FROM ProgressItem")
+    suspend fun all(): List<ProgressItem>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(p: ProgressItem)
 }
@@ -47,6 +65,12 @@ interface HistoryDao {
     @Query("SELECT * FROM HistoryItem WHERE sourceId=:s AND entryId=:e")
     fun observeEntry(s: String, e: String): Flow<HistoryItem?>
 
+    @Query("SELECT * FROM HistoryItem")
+    suspend fun all(): List<HistoryItem>
+
+    @Query("SELECT * FROM HistoryItem WHERE sourceId=:s AND entryId=:e")
+    suspend fun get(s: String, e: String): HistoryItem?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(h: HistoryItem)
 
@@ -56,6 +80,9 @@ interface HistoryDao {
 
 @Dao
 interface EpisodeCacheDao {
+    @Query("SELECT episodeId FROM CachedEpisode WHERE sourceId=:s AND entryId=:e")
+    suspend fun ids(s: String, e: String): List<String>
+
     @Query("DELETE FROM CachedEpisode WHERE sourceId=:s AND entryId=:e")
     suspend fun clear(s: String, e: String)
 
@@ -84,5 +111,23 @@ interface CustomChannelDao {
     suspend fun upsert(c: CustomChannel)
 
     @Query("DELETE FROM CustomChannel WHERE id=:id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface ReminderDao {
+    @Query("SELECT * FROM CustomReminder ORDER BY weekday, hour, minute")
+    fun observeAll(): Flow<List<CustomReminder>>
+
+    @Query("SELECT * FROM CustomReminder")
+    suspend fun all(): List<CustomReminder>
+
+    @Query("SELECT * FROM CustomReminder WHERE id=:id")
+    suspend fun get(id: String): CustomReminder?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(r: CustomReminder)
+
+    @Query("DELETE FROM CustomReminder WHERE id=:id")
     suspend fun delete(id: String)
 }

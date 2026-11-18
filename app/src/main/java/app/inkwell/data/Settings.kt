@@ -27,6 +27,31 @@ class Settings(context: Context) {
     val readerDirection: StateFlow<ReaderDirection> = _dir
     fun setReaderDirection(v: ReaderDirection) { _dir.value = v; sp.edit().putString("dir", v.name).apply() }
 
+    /** Last selected source per content type (key = ContentType.name). */
+    fun lastSource(type: String): String? = sp.getString("last_src_$type", null)
+
+    /** Most-recently-used source ids for a type, newest first (max 5). */
+    fun recentSources(type: String): List<String> =
+        sp.getString("recent_src_$type", null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+
+    fun rememberSource(type: String, id: String) {
+        val list = (listOf(id) + recentSources(type).filter { it != id }).take(5)
+        sp.edit().putString("last_src_$type", id).putString("recent_src_$type", list.joinToString(",")).apply()
+    }
+
+    /** Library auto-update interval in hours; 0 = off. */
+    private val _updateHours = MutableStateFlow(sp.getInt("upd_hours", 0))
+    val updateHours: StateFlow<Int> = _updateHours
+    fun setUpdateHours(v: Int) { _updateHours.value = v; sp.edit().putInt("upd_hours", v).apply() }
+
+    private val _wifiOnly = MutableStateFlow(sp.getBoolean("upd_wifi", true))
+    val updateWifiOnly: StateFlow<Boolean> = _wifiOnly
+    fun setUpdateWifiOnly(v: Boolean) { _wifiOnly.value = v; sp.edit().putBoolean("upd_wifi", v).apply() }
+
+    private val _charging = MutableStateFlow(sp.getBoolean("upd_charging", false))
+    val updateCharging: StateFlow<Boolean> = _charging
+    fun setUpdateCharging(v: Boolean) { _charging.value = v; sp.edit().putBoolean("upd_charging", v).apply() }
+
     private inline fun <reified E : Enum<E>> enumOf(s: String?, def: E): E =
         runCatching { enumValueOf<E>(s!!) }.getOrDefault(def)
 }
