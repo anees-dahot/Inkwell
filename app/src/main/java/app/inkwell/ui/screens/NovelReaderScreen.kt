@@ -82,7 +82,7 @@ class NovelReaderViewModel(
             loading = true; error = null
             try {
                 val ep = episodes.firstOrNull { it.id == episodeId } ?: error("Chapter not found")
-                val text = (c.registry.get(sourceId) as NovelSource).chapterText(episodeId)
+                val text = c.repo.chapterText(sourceId, entryId, episodeId)
                 if (text.isEmpty()) error("This chapter has no readable content")
                 val prog = c.repo.getProgress(sourceId, entryId, episodeId)
                 initialParagraph = if (prog != null && !prog.read) prog.page.coerceIn(0, text.lastIndex) else 0

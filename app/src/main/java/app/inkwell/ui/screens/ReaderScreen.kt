@@ -104,7 +104,7 @@ class ReaderViewModel(
             loading = true; error = null
             try {
                 val ep = episodes.firstOrNull { it.id == episodeId } ?: error("Chapter not found")
-                val pg = (c.registry.get(sourceId) as MangaSource).pages(episodeId)
+                val pg = c.repo.pages(sourceId, entryId, episodeId)
                 if (pg.isEmpty()) error("This chapter has no pages")
                 val prog = c.repo.getProgress(sourceId, entryId, episodeId)
                 initialPage = if (prog != null && !prog.read) prog.page.coerceIn(0, pg.lastIndex) else 0

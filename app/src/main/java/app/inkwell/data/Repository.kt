@@ -22,6 +22,14 @@ class Repository(val registry: SourceRegistry, private val db: InkDatabase, val 
 
     private fun key(s: String, e: String) = "$s/$e"
 
+    /** Chapter text for the novel reader. Single entry point so downloads can serve it offline. */
+    suspend fun chapterText(sourceId: String, entryId: String, episodeId: String): List<String> =
+        (registry.get(sourceId) as NovelSource).chapterText(episodeId)
+
+    /** Manga pages for the reader. Single entry point so downloads can serve them offline. */
+    suspend fun pages(sourceId: String, entryId: String, episodeId: String): List<Page> =
+        (registry.get(sourceId) as MangaSource).pages(episodeId)
+
     suspend fun details(sourceId: String, entryId: String): EntryDetails =
         detailsCache[key(sourceId, entryId)] ?: registry.get(sourceId).details(entryId)
             .also { detailsCache[key(sourceId, entryId)] = it }
