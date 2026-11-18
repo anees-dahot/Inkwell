@@ -138,7 +138,7 @@ private fun initialSource(c: AppContainer): String {
 }
 
 @Composable
-fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
+fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onSearchAll: (ContentType, String) -> Unit = { _, _ -> }) {
     val c = LocalContainer.current
     val ink = LocalInk.current
     val vm = inkViewModel("browse") { BrowseViewModel(it) }
@@ -173,6 +173,9 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     LargeTitle("Browse", Modifier)
                     SearchField(vm.query, vm::updateQuery, if (vm.sourceId == c.youtube.id) "Filter titles" else "Search ${sources.first { it.id == vm.sourceId }.name}")
+                    if (vm.query.isNotBlank()) {
+                        FilledPill("Search all sources for \"${vm.query.trim()}\"", Modifier.fillMaxWidth(), filled = false) { onSearchAll(vm.type, vm.query.trim()) }
+                    }
                     SegmentedControl(listOf("Manga", "Novels", "Donghua"), when (vm.type) { ContentType.MANGA -> 0; ContentType.NOVEL -> 1; else -> 2 }, { t -> vm.selectType(listOf(ContentType.MANGA, ContentType.NOVEL, ContentType.VIDEO)[t]) })
                     val typeSources = vm.sourcesFor(vm.type)
                     if (typeSources.size > 1) {

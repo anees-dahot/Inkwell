@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -50,8 +51,8 @@ class ImpatientMtlReaderSource(client: OkHttpClient) : ScraperNovelSource(client
         if (e.message?.let { "HTTP 400" in it || "HTTP 404" in it } == true) JsonArray(emptyList()) else throw e
     }
 
-    private fun s(o: JsonObject, k: String) = o[k]?.jsonPrimitive?.content.orEmpty()
-    private fun rendered(o: JsonObject, k: String) = o[k]?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()
+    private fun s(o: JsonObject, k: String) = o[k]?.jsonPrimitive?.contentOrNull.orEmpty()
+    private fun rendered(o: JsonObject, k: String) = o[k]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()
 
     private fun pageCover(page: JsonObject): String? {
         val d = Jsoup.parse("<div>${rendered(page, "content")}</div>")

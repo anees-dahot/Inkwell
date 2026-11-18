@@ -29,7 +29,7 @@ class MvlempyrSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private var cache: List<Item>? = null
 
-    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.contentOrNull
+    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
     private fun d(e: JsonElement?): Double = (e as? JsonPrimitive)?.doubleOrNull ?: s(e)?.toDoubleOrNull() ?: 0.0
 
     private suspend fun all(): List<Item> {

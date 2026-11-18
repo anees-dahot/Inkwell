@@ -33,7 +33,7 @@ class AnimeAnywaySource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private fun JsonObject?.obj(key: String): JsonObject? = this?.get(key) as? JsonObject
     private fun JsonObject?.arr(key: String): JsonArray? = this?.get(key) as? JsonArray
-    private fun JsonObject?.str(key: String): String? = (this?.get(key) as? JsonPrimitive)?.content
+    private fun JsonObject?.str(key: String): String? = (this?.get(key) as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content
     private fun JsonObject?.bool(key: String): Boolean? = (this?.get(key) as? JsonPrimitive)?.booleanOrNull
 
     /** Extracts the Next.js page data every server-rendered page embeds. */
@@ -168,7 +168,7 @@ class AnimeAnywaySource(client: OkHttpClient) : ScraperNovelSource(client) {
                     val inner = b.arr("children").orEmpty().mapNotNull { s ->
                         val span = s as? JsonObject ?: return@mapNotNull null
                         var text = span.str("text").orEmpty()
-                        val marks = span.arr("marks").orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+                        val marks = span.arr("marks").orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content }
                         if ("strong" in marks) text = "<strong>$text</strong>"
                         if ("em" in marks) text = "<em>$text</em>"
                         text

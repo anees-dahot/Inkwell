@@ -65,7 +65,7 @@ class NovelArchiveSource(client: OkHttpClient) : ScraperNovelSource(client) {
             ?: throw IllegalStateException("Novel Archive: no such novel")
 
         val names = novel["chapter_names"]?.jsonArray
-            ?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content }.orEmpty()
         val total = novel["total_chapters"]?.asStringOrNull()?.toIntOrNull() ?: names.size
 
         val chapters = (1..total).map { number ->

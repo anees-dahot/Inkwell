@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -36,7 +37,7 @@ class NovelitoSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val arr = json(b.build()).jsonObject["data"] as? JsonArray ?: JsonArray(emptyList())
         val items = arr.mapNotNull { el ->
             val o = el.jsonObject
-            val nid = o["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val nid = o["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             val title = str(o, "title") ?: return@mapNotNull null
             Entry(id, nid, title, cover(str(o, "cover_image")), ContentType.NOVEL)
         }
@@ -80,7 +81,7 @@ class NovelitoSource(client: OkHttpClient) : ScraperNovelSource(client) {
             entry = Entry(id, entryId, str(info, "title") ?: "Untitled", cover(str(info, "cover_image")), ContentType.NOVEL),
             description = str(info, "description")?.let { plain(it) }?.takeIf { it.isNotEmpty() },
             authors = listOfNotNull(str(info, "author")?.takeIf { it.isNotEmpty() }),
-            genres = (info["genres"] as? JsonArray)?.mapNotNull { g -> (g as? JsonPrimitive)?.content?.takeIf { it.isNotEmpty() } }.orEmpty(),
+            genres = (info["genres"] as? JsonArray)?.mapNotNull { g -> (g as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content?.takeIf { it.isNotEmpty() } }.orEmpty(),
             status = status,
         )
     }
@@ -91,9 +92,9 @@ class NovelitoSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val out = ArrayList<Episode>()
         arr.forEachIndexed { i, el ->
             val c = el.jsonObject
-            val cid = c["id"]?.jsonPrimitive?.content ?: return@forEachIndexed
+            val cid = c["id"]?.jsonPrimitive?.contentOrNull ?: return@forEachIndexed
             if (!seen.add(cid)) return@forEachIndexed
-            val num = c["chapter_number"]?.jsonPrimitive?.content?.toFloatOrNull()
+            val num = c["chapter_number"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
             val title = str(c, "title")?.trim().orEmpty()
             out += Episode(
                 id = "$entryId/$cid",
@@ -119,8 +120,8 @@ class NovelitoSource(client: OkHttpClient) : ScraperNovelSource(client) {
         for (p in paras) {
             val o = p as? JsonObject ?: continue
             val html = str(o, "html").orEmpty()
-            if (o["isHoneypot"]?.jsonPrimitive?.content == "true" ||
-                o["isMidWatermark"]?.jsonPrimitive?.content == "true" ||
+            if (o["isHoneypot"]?.jsonPrimitive?.contentOrNull == "true" ||
+                o["isMidWatermark"]?.jsonPrimitive?.contentOrNull == "true" ||
                 "watermark-notice" in html || "noveli-canary" in html
             ) continue
             val text = (str(o, "text")?.let { Jsoup.parse(it).text() } ?: plain(html)).trim()

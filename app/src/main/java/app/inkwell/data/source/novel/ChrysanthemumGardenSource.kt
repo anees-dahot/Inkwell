@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -42,8 +43,8 @@ class ChrysanthemumGardenSource(client: OkHttpClient) : ScraperNovelSource(clien
         val root = json(absPath("wp-json/cg/novels"))
         val all = root.jsonArray.mapNotNull { el ->
             val o = el.jsonObject
-            val name = o["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val link = o["link"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val name = o["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val link = o["link"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             Triple(name, link.removePrefix(baseUrl).trim('/'), null as String?)
         }
         val q = query.lowercase()

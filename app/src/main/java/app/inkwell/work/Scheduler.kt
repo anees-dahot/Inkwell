@@ -90,6 +90,7 @@ object Scheduler {
         val c = (app as InkwellApp).container
         syncPeriodic(app, c.settings)
         scope.launch {
+            runCatching { Downloads.resumeOnStart(app) }
             c.repo.allReminders().forEach { scheduleCustom(app, it) }
             syncExpected(app)
         }

@@ -18,6 +18,7 @@ import app.inkwell.data.model.Episode
 object Notifier {
     const val CH_UPDATES = "updates"
     const val CH_REMINDERS = "reminders"
+    const val CH_DOWNLOADS = "downloads"
     private const val GROUP = "inkwell.updates"
     private const val SUMMARY_ID = 1001
 
@@ -26,6 +27,9 @@ object Notifier {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_UPDATES, "Library updates", NotificationManager.IMPORTANCE_LOW).apply {
             description = "New chapters found while updating your library"
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Progress of chapter downloads"
         })
         nm.createNotificationChannel(NotificationChannel(CH_REMINDERS, "Reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Release reminders and reading reminders"

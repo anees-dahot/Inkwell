@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -78,7 +79,7 @@ class NovelightSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 .newBuilder().header("Referer", url).header("X-Requested-With", "XMLHttpRequest")
                 .header("Cookie", "csrftoken=$csrf").build()
             val html = json.parseToJsonElement(client.newCall(req).bodyString())
-                .jsonObject["html"]?.jsonPrimitive?.content ?: continue
+                .jsonObject["html"]?.jsonPrimitive?.contentOrNull ?: continue
             val chunk = Jsoup.parse("<html>$html</html>", baseUrl).select("a").mapNotNull { a ->
                 val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
                 val title = a.selectFirst(".title")?.text()?.trim().orEmpty()
@@ -111,8 +112,8 @@ class NovelightSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .header("Cookie", "csrftoken=$csrf").header("Referer", url)
             .header("X-Requested-With", "XMLHttpRequest").build()
         val o = json.parseToJsonElement(client.newCall(req).bodyString()).jsonObject
-        val cls = o["class"]?.jsonPrimitive?.content ?: return emptyList()
-        val content = o["content"]?.jsonPrimitive?.content ?: return emptyList()
+        val cls = o["class"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
+        val content = o["content"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
         val d = Jsoup.parse(content)
         d.select("script, .advertisment").remove()
         return paragraphsOf(d.selectFirst(".$cls") ?: d.body())

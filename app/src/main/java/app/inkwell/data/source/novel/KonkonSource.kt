@@ -85,7 +85,7 @@ class KonkonSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 val locked = (chapter["is_locked"]?.jsonPrimitive?.booleanOrNull == true) &&
                     chapter["user_has_access"]?.jsonPrimitive?.booleanOrNull != true
                 Episode(
-                    id = "read/chapter/${chapter["id"]?.jsonPrimitive?.content}/${chapter["slug"]?.jsonPrimitive?.content}",
+                    id = "read/chapter/${chapter["id"]?.jsonPrimitive?.contentOrNull}/${chapter["slug"]?.jsonPrimitive?.contentOrNull}",
                     name = (if (locked) "🔒 " else "") + (chapter["title"]?.jsonPrimitive?.contentOrNull ?: "Chapter"),
                     number = null,
                     dateMillis = parseDate(

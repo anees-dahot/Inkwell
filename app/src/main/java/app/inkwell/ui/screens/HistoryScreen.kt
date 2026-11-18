@@ -7,9 +7,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,7 +31,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun HistoryScreen(hazeState: HazeState, onOpen: (HistoryItem) -> Unit) {
     val c = LocalContainer.current
-    val items by c.repo.history().collectAsStateWithLifecycle(emptyList())
+    val all by c.repo.history().collectAsStateWithLifecycle(emptyList())
+    var query by rememberSaveable { mutableStateOf("") }
+    var confirmClear by remember { mutableStateOf(false) }
+    val items = remember(all, query) {
+        val q = query.trim()
+        if (q.isEmpty()) all else all.filter { it.entryTitle.contains(q, true) || it.episodeName.contains(q, true) }
+    }
     val list = rememberLazyListState()
     val collapsed by list.rememberCollapsed()
     val ink = LocalInk.current
@@ -43,7 +51,10 @@ fun HistoryScreen(hazeState: HazeState, onOpen: (HistoryItem) -> Unit) {
             contentPadding = PaddingValues(top = topContentPadding(), bottom = LocalBottomInset.current.calculateBottomPadding() + 16.dp),
         ) {
             item { LargeTitle("History") }
-            if (items.isEmpty()) item { EmptyState(Icons.Outlined.History, "Nothing read or watched yet.") }
+            if (all.isNotEmpty()) item {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { SearchField(query, { query = it }, "Search history") }
+            }
+            if (items.isEmpty()) item { EmptyState(Icons.Outlined.History, if (all.isEmpty()) "Nothing read or watched yet." else "Nothing matches.") }
             items(items, key = { it.sourceId + "/" + it.entryId }) { h ->
                 val dismiss = rememberSwipeToDismissBoxState(
                     confirmValueChange = { v ->
@@ -86,7 +97,16 @@ fun HistoryScreen(hazeState: HazeState, onOpen: (HistoryItem) -> Unit) {
                 }
             }
         }
-        GlassTopBar("History", collapsed, hazeState, Modifier.align(Alignment.TopCenter))
+        GlassTopBar(
+            "History", collapsed, hazeState, Modifier.align(Alignment.TopCenter),
+            trailing = { if (all.isNotEmpty()) BarIconButton(Icons.Outlined.DeleteSweep, "Clear all history") { confirmClear = true } },
+        )
+        if (confirmClear) AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear history?") }, text = { Text("This removes all ${all.size} history entries. Reading progress is kept.") },
+            confirmButton = { TextButton({ confirmClear = false; scope.launch { c.repo.clearHistory() } }) { Text("Clear") } },
+            dismissButton = { TextButton({ confirmClear = false }) { Text("Cancel") } },
+        )
         SnackbarHost(
             snack,
             Modifier.align(Alignment.BottomCenter).padding(bottom = LocalBottomInset.current.calculateBottomPadding() + 8.dp),

@@ -224,7 +224,7 @@ class NightjarReadsSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private fun parseGenres(raw: String): List<String> =
         runCatching {
-            parser.parseToJsonElement(raw).jsonArray.mapNotNull { (it as? JsonPrimitive)?.content }
+            parser.parseToJsonElement(raw).jsonArray.mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content }
         }.getOrDefault(emptyList())
 
     /** Find the novel's own card in the page's embedded novel index. */

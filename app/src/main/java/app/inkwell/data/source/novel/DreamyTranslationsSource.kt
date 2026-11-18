@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -159,9 +160,9 @@ class DreamyTranslationsSource(client: OkHttpClient) : ScraperNovelSource(client
         val covers = data["squareImageUrls"]?.jsonObject
         return projects.mapNotNull { el ->
             val o = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
-            val slug = o["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val cover = o["id"]?.jsonPrimitive?.content?.let { covers?.get(it)?.jsonPrimitive?.content }
+            val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val cover = o["id"]?.jsonPrimitive?.contentOrNull?.let { covers?.get(it)?.jsonPrimitive?.contentOrNull }
             Entry(id, "novel/$slug", title, abs(cover), ContentType.NOVEL)
         }
     }
@@ -185,13 +186,13 @@ class DreamyTranslationsSource(client: OkHttpClient) : ScraperNovelSource(client
         val rscText = fetchRsc(absPath(entryId))
         val data = extractRscObject(rscText, "\"chapters\":[").jsonObject
         val project = data["project"]?.jsonObject
-        val title = project?.get("title")?.jsonPrimitive?.content?.takeUnless { it.isEmpty() } ?: "Untitled"
+        val title = project?.get("title")?.jsonPrimitive?.contentOrNull?.takeUnless { it.isEmpty() } ?: "Untitled"
         val chaptersRoot = data["chapters"]?.jsonArray ?: emptyList()
         val chapters = chaptersRoot.mapNotNull { el ->
             val ch = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
-            val index = ch["index"]?.jsonPrimitive?.content?.toFloatOrNull() ?: return@mapNotNull null
-            val chTitle = ch["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val free = ch["free"]?.jsonPrimitive?.content == "true"
+            val index = ch["index"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: return@mapNotNull null
+            val chTitle = ch["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val free = ch["free"]?.jsonPrimitive?.contentOrNull == "true"
             Episode(
                 id = "$entryId/chapter/${index.toInt()}",
                 name = if (free) chTitle else "🔒 $chTitle",
@@ -200,14 +201,14 @@ class DreamyTranslationsSource(client: OkHttpClient) : ScraperNovelSource(client
             )
         }
         return EntryDetails(
-            entry = Entry(id, entryId, title, abs(data["coverUrl"]?.jsonPrimitive?.content), ContentType.NOVEL),
-            description = (project?.get("synopsis")?.jsonPrimitive?.content
-                ?: project?.get("short_synopsis")?.jsonPrimitive?.content)?.takeUnless { it.isEmpty() },
-            authors = listOfNotNull(project?.get("author")?.jsonPrimitive?.content?.takeUnless { it.isEmpty() }),
+            entry = Entry(id, entryId, title, abs(data["coverUrl"]?.jsonPrimitive?.contentOrNull), ContentType.NOVEL),
+            description = (project?.get("synopsis")?.jsonPrimitive?.contentOrNull
+                ?: project?.get("short_synopsis")?.jsonPrimitive?.contentOrNull)?.takeUnless { it.isEmpty() },
+            authors = listOfNotNull(project?.get("author")?.jsonPrimitive?.contentOrNull?.takeUnless { it.isEmpty() }),
             genres = project?.get("genres")?.jsonArray
                 ?.mapNotNull { runCatching { it.jsonPrimitive.content }.getOrNull() }
                 .orEmpty(),
-            status = if (project?.get("completed")?.jsonPrimitive?.content == "true") "Completed" else "Ongoing",
+            status = if (project?.get("completed")?.jsonPrimitive?.contentOrNull == "true") "Completed" else "Ongoing",
         ).also { cachedChapters[entryId] = chapters }
     }
 
@@ -222,10 +223,10 @@ class DreamyTranslationsSource(client: OkHttpClient) : ScraperNovelSource(client
     override suspend fun chapterText(episodeId: String): List<String> {
         val rscText = fetchRsc(absPath(episodeId))
         val data = extractChapterObject(rscText)
-        val hasAccess = data["hasAccess"]?.jsonPrimitive?.content == "true"
+        val hasAccess = data["hasAccess"]?.jsonPrimitive?.contentOrNull == "true"
         if (!hasAccess) return emptyList()
 
-        var content = data["chapter"]?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
+        var content = data["chapter"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull ?: ""
         // Content may be a reference to a streamed RSC text record.
         val refMatch = Regex("^\\$([0-9a-zA-Z]+)$").find(content)
         if (refMatch != null) {

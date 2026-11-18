@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -56,9 +57,9 @@ class EmpireNovelSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val results = json("$baseUrl/search-live?q=${urlEncode(query)}").jsonArray
         val items = results.mapNotNull { el ->
             val o = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
-            val nm = o["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val slug = o["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val hasCover = (o["cover"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0) != 0
+            val nm = o["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val hasCover = (o["cover"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0) != 0
             val cover = if (hasCover) "$baseUrl/uploads/novel/$slug/cover/cover_thumb.jpg" else null
             Entry(id, "novel/$slug", nm, abs(cover), ContentType.NOVEL)
         }

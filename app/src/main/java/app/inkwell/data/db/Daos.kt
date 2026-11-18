@@ -32,6 +32,12 @@ interface LibraryDao {
     @Query("SELECT EXISTS(SELECT 1 FROM LibraryItem WHERE sourceId=:s AND entryId=:e AND remind=1)")
     fun observeRemind(s: String, e: String): Flow<Boolean>
 
+    @Query("UPDATE LibraryItem SET categoryId=:cat WHERE sourceId=:s AND entryId=:e")
+    suspend fun setCategory(s: String, e: String, cat: Long)
+
+    @Query("UPDATE LibraryItem SET categoryId=0 WHERE categoryId=:cat")
+    suspend fun clearCategory(cat: Long)
+
     @Query("DELETE FROM LibraryItem WHERE sourceId=:s AND entryId=:e")
     suspend fun delete(s: String, e: String)
 
@@ -76,12 +82,18 @@ interface HistoryDao {
 
     @Query("DELETE FROM HistoryItem WHERE sourceId=:s AND entryId=:e")
     suspend fun delete(s: String, e: String)
+
+    @Query("DELETE FROM HistoryItem")
+    suspend fun clear()
 }
 
 @Dao
 interface EpisodeCacheDao {
     @Query("SELECT episodeId FROM CachedEpisode WHERE sourceId=:s AND entryId=:e")
     suspend fun ids(s: String, e: String): List<String>
+
+    @Query("SELECT * FROM CachedEpisode WHERE sourceId=:s AND entryId=:e")
+    suspend fun forEntry(s: String, e: String): List<CachedEpisode>
 
     @Query("DELETE FROM CachedEpisode WHERE sourceId=:s AND entryId=:e")
     suspend fun clear(s: String, e: String)
@@ -130,4 +142,85 @@ interface ReminderDao {
 
     @Query("DELETE FROM CustomReminder WHERE id=:id")
     suspend fun delete(id: String)
+}
+
+@Dao
+interface CategoryDao {
+    @Query("SELECT * FROM LibraryCategory ORDER BY sortOrder, id")
+    fun observeAll(): Flow<List<LibraryCategory>>
+
+    @Query("SELECT * FROM LibraryCategory ORDER BY sortOrder, id")
+    suspend fun all(): List<LibraryCategory>
+
+    @Insert
+    suspend fun insert(c: LibraryCategory): Long
+
+    @Update
+    suspend fun update(c: LibraryCategory)
+
+    @Query("DELETE FROM LibraryCategory WHERE id=:id")
+    suspend fun delete(id: Long)
+}
+
+@Dao
+interface DownloadDao {
+    @Query("SELECT * FROM DownloadItem ORDER BY createdAt")
+    fun observeAll(): Flow<List<DownloadItem>>
+
+    @Query("SELECT * FROM DownloadItem WHERE sourceId=:s AND entryId=:e")
+    fun observeEntry(s: String, e: String): Flow<List<DownloadItem>>
+
+    @Query("SELECT * FROM DownloadItem WHERE sourceId=:s AND entryId=:e AND episodeId=:ep")
+    suspend fun get(s: String, e: String, ep: String): DownloadItem?
+
+    @Query("SELECT * FROM DownloadItem WHERE status='DONE'")
+    suspend fun done(): List<DownloadItem>
+
+    @Query("SELECT * FROM DownloadItem WHERE sourceId=:s AND entryId=:e")
+    suspend fun forEntry(s: String, e: String): List<DownloadItem>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(items: List<DownloadItem>)
+
+    @Query("UPDATE DownloadItem SET status='QUEUED', progress=0, error=NULL WHERE sourceId=:s AND entryId=:e AND episodeId=:ep AND status IN ('ERROR','PAUSED')")
+    suspend fun requeue(s: String, e: String, ep: String)
+
+    @Query("SELECT * FROM DownloadItem WHERE status='QUEUED' ORDER BY createdAt LIMIT 1")
+    suspend fun nextQueued(): DownloadItem?
+
+    @Query("UPDATE DownloadItem SET status='DOWNLOADING', progress=0, error=NULL WHERE sourceId=:s AND entryId=:e AND episodeId=:ep AND status='QUEUED'")
+    suspend fun claim(s: String, e: String, ep: String): Int
+
+    @Query("UPDATE DownloadItem SET progress=:p, total=:t WHERE sourceId=:s AND entryId=:e AND episodeId=:ep AND status='DOWNLOADING'")
+    suspend fun setProgress(s: String, e: String, ep: String, p: Int, t: Int)
+
+    @Query("UPDATE DownloadItem SET status='DONE', progress=total, bytes=:bytes, error=NULL WHERE sourceId=:s AND entryId=:e AND episodeId=:ep")
+    suspend fun setDone(s: String, e: String, ep: String, bytes: Long)
+
+    @Query("UPDATE DownloadItem SET status='ERROR', error=:err WHERE sourceId=:s AND entryId=:e AND episodeId=:ep AND status='DOWNLOADING'")
+    suspend fun setError(s: String, e: String, ep: String, err: String?)
+
+    @Query("UPDATE DownloadItem SET status='QUEUED' WHERE status='DOWNLOADING'")
+    suspend fun resetStuck()
+
+    @Query("UPDATE DownloadItem SET status='PAUSED' WHERE status IN ('QUEUED','DOWNLOADING')")
+    suspend fun pauseAll()
+
+    @Query("UPDATE DownloadItem SET status='QUEUED', progress=0, error=NULL WHERE status IN ('PAUSED','ERROR')")
+    suspend fun resumeAll()
+
+    @Query("SELECT COUNT(*) FROM DownloadItem WHERE status IN ('QUEUED','DOWNLOADING')")
+    suspend fun pendingCount(): Int
+
+    @Query("SELECT COUNT(*) FROM DownloadItem WHERE status='QUEUED'")
+    suspend fun queuedCount(): Int
+
+    @Query("DELETE FROM DownloadItem WHERE sourceId=:s AND entryId=:e AND episodeId=:ep")
+    suspend fun delete(s: String, e: String, ep: String)
+
+    @Query("DELETE FROM DownloadItem WHERE sourceId=:s AND entryId=:e")
+    suspend fun deleteEntry(s: String, e: String)
+
+    @Query("DELETE FROM DownloadItem WHERE status!='DONE'")
+    suspend fun clearQueue()
 }

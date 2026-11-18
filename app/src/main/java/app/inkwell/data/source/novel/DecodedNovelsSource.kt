@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -84,7 +85,7 @@ class DecodedNovelsSource(client: OkHttpClient) : ScraperNovelSource(client) {
             val root = json("$baseUrl/wp-json/wp/v2/pages?per_page=100&_fields=link&search=${urlEncode(term)}").jsonArray
             val found = root.mapNotNull { el ->
                 runCatching {
-                    el.jsonObject["link"]?.jsonPrimitive?.content?.let { sitePath(it)?.trimEnd('/') }
+                    el.jsonObject["link"]?.jsonPrimitive?.contentOrNull?.let { sitePath(it)?.trimEnd('/') }
                 }.getOrNull()
             }.toHashSet()
             listed.filter { it.path.trimEnd('/') in found }

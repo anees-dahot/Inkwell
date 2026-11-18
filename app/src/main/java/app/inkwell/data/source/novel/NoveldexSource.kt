@@ -26,7 +26,7 @@ class NoveldexSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     override val headers = mapOf("Referer" to "https://noveldex.io", "RSC" to "1")
 
-    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.contentOrNull
+    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
 
     private fun findClientId(rsc: String, component: String): String? {
         val esc = Regex.escape(component)

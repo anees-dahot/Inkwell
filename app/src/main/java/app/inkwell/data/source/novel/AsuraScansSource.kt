@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 import app.inkwell.data.model.*
 import app.inkwell.data.source.*
@@ -40,13 +41,13 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val data = json(url).jsonObject["data"] as? JsonArray ?: return emptyList()
         return data.mapNotNull { el ->
             val o = el as? JsonObject ?: return@mapNotNull null
-            val slug = o["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             Entry(
                 id,
                 "novels/$slug",
                 title,
-                abs(o["cover_url"]?.jsonPrimitive?.content),
+                abs(o["cover_url"]?.jsonPrimitive?.contentOrNull),
                 ContentType.NOVEL,
             )
         }
@@ -77,8 +78,8 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val series = root["series"] as? JsonObject
             ?: throw IllegalStateException("$name: series not found")
 
-        val title = series["title"]?.jsonPrimitive?.content ?: "Untitled"
-        val statusRaw = series["status"]?.jsonPrimitive?.content?.lowercase().orEmpty()
+        val title = series["title"]?.jsonPrimitive?.contentOrNull ?: "Untitled"
+        val statusRaw = series["status"]?.jsonPrimitive?.contentOrNull?.lowercase().orEmpty()
         val status = when (statusRaw) {
             "ongoing" -> "Ongoing"
             "complete", "completed" -> "Completed"
@@ -86,13 +87,13 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
             "dropped" -> "Cancelled"
             else -> null
         }
-        val author = series["author"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        val author = series["author"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
         val genres = (series["genres"] as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.content }
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content }
             .orEmpty()
 
         var summary: String? = null
-        val descriptionHtml = series["description"]?.jsonPrimitive?.content
+        val descriptionHtml = series["description"]?.jsonPrimitive?.contentOrNull
         if (!descriptionHtml.isNullOrBlank()) {
             val parsed = Jsoup.parseBodyFragment(descriptionHtml)
             val paragraphs = parsed.select("p").map { it.text().trim() }.filter { it.isNotEmpty() }
@@ -102,14 +103,14 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         val chapters = (root["chapters"] as? JsonArray).orEmpty().mapNotNull { el ->
             val o = el as? JsonObject ?: return@mapNotNull null
-            val number = o["number"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val chapterTitle = o["title"]?.jsonPrimitive?.content?.trim()
+            val number = o["number"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val chapterTitle = o["title"]?.jsonPrimitive?.contentOrNull?.trim()
             val name = "Chapter $number" + (chapterTitle?.takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "")
             Episode(
                 id = "novels/$slug/chapter/$number",
                 name = if (o["is_locked"]?.jsonPrimitive?.booleanOrNull == true) "🔒 $name" else name,
                 number = number.toFloatOrNull(),
-                dateMillis = parseDate(o["published_at"]?.jsonPrimitive?.content),
+                dateMillis = parseDate(o["published_at"]?.jsonPrimitive?.contentOrNull),
             )
         }
 
@@ -118,7 +119,7 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 id,
                 entryId,
                 title,
-                abs(series["cover_url"]?.jsonPrimitive?.content),
+                abs(series["cover_url"]?.jsonPrimitive?.contentOrNull),
                 ContentType.NOVEL,
             ),
             description = summary,
@@ -143,7 +144,7 @@ class AsuraScansSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val slug = URLEncoder.encode(parts[1], "UTF-8")
         val number = URLEncoder.encode(parts[3], "UTF-8")
         val root = json("$apiUrl/novel-series/$slug/chapter/$number").jsonObject
-        val html = root["content_html"]?.jsonPrimitive?.content
+        val html = root["content_html"]?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() } ?: return emptyList()
 
         val d = Jsoup.parseBodyFragment(html)

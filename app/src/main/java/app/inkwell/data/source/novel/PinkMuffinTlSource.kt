@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,10 +59,10 @@ class PinkMuffinTlSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private fun toCat(o: JsonObject) = Cat(
         o["id"]!!.jsonPrimitive.content.toInt(),
-        o["name"]?.jsonPrimitive?.content.orEmpty(),
-        o["slug"]?.jsonPrimitive?.content.orEmpty(),
-        o["count"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-        o["description"]?.jsonPrimitive?.content.orEmpty(),
+        o["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        o["slug"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        o["count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+        o["description"]?.jsonPrimitive?.contentOrNull.orEmpty(),
     )
 
     private suspend fun categories(search: String? = null): List<Cat> {
@@ -115,9 +116,9 @@ class PinkMuffinTlSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val posts = allPages("/posts?categories=${cat.id}&orderby=date&order=asc&per_page=$pageSize&_fields=id,date_gmt,link,title")
             .map { it.jsonObject }.map {
                 Post(
-                    it["id"]!!.jsonPrimitive.content, it["date_gmt"]?.jsonPrimitive?.content.orEmpty(),
-                    it["link"]?.jsonPrimitive?.content.orEmpty(),
-                    decode(it["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()),
+                    it["id"]!!.jsonPrimitive.content, it["date_gmt"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    it["link"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    decode(it["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()),
                 )
             }
         val intro = posts.firstOrNull { !chapterTitle.containsMatchIn(it.title) }
@@ -126,7 +127,7 @@ class PinkMuffinTlSource(client: OkHttpClient) : ScraperNovelSource(client) {
         var status: String? = null
         if (intro != null) {
             val html = api("/posts/${intro.id}?_fields=content").first.jsonObject["content"]?.jsonObject
-                ?.get("rendered")?.jsonPrimitive?.content.orEmpty()
+                ?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()
             val d = Jsoup.parse(html)
             cover = d.selectFirst("img[src]")?.attr("src")?.substringBefore('?')?.takeIf { it.isNotEmpty() }
             d.select("script, style, img, figure").remove()
@@ -173,7 +174,7 @@ class PinkMuffinTlSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val arr = api("/posts?slug=${URLEncoder.encode(slug, "UTF-8")}&_fields=link,content").first.jsonArray
         val post = arr.map { it.jsonObject }.firstOrNull { java.net.URI(it["link"]!!.jsonPrimitive.content).path == episodeId }
             ?: arr.firstOrNull()?.jsonObject ?: error("$name: chapter not found.")
-        val html = post["content"]?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()
+        val html = post["content"]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()
         val d = Jsoup.parse("<div id=\"chapter\">$html</div>")
         val c = d.selectFirst("#chapter")!!
         c.select("script, style, iframe, .wp-block-spacer").remove()

@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -231,7 +232,7 @@ class MachineSlicedBreadSource(client: OkHttpClient) : ScraperNovelSource(client
                 var reachedListed = false
                 for (item in items) {
                     val o = item.jsonObject
-                    val path = sitePath(o["link"]?.jsonPrimitive?.content)
+                    val path = sitePath(o["link"]?.jsonPrimitive?.contentOrNull)
                     val slug = path?.trim('/')?.split('/')?.lastOrNull().orEmpty()
                     if (path == null || !slug.startsWith(prefixRaw)) continue
                     val number = slug.removePrefix(prefixRaw).toIntOrNull() ?: continue
@@ -239,14 +240,14 @@ class MachineSlicedBreadSource(client: OkHttpClient) : ScraperNovelSource(client
                         reachedListed = true
                         continue
                     }
-                    val title = cleanText(Jsoup.parse(o["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.content ?: "").text())
+                    val title = cleanText(Jsoup.parse(o["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull ?: "").text())
                     var name = Regex("^.*?(?=chapter\\s+\\d)", RegexOption.IGNORE_CASE).replace(title, "")
                     if (name.startsWith("chapter")) name = "Chapter" + name.substring("chapter".length)
                     found[number] = Episode(
                         id = path.trimStart('/'),
                         name = name.ifBlank { "Chapter $number" },
                         number = number.toFloat(),
-                        dateMillis = parseDate(o["date"]?.jsonPrimitive?.content, "yyyy-MM-dd'T'HH:mm:ss"),
+                        dateMillis = parseDate(o["date"]?.jsonPrimitive?.contentOrNull, "yyyy-MM-dd'T'HH:mm:ss"),
                     )
                 }
                 if (reachedListed || items.size < 100) break

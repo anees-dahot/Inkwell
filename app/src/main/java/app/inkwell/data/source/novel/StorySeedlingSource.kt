@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -66,13 +67,13 @@ class StorySeedlingSource(client: OkHttpClient) : ScraperNovelSource(client) {
         }.getOrNull()
         val items = root?.get("data")?.jsonObject?.get("posts")?.jsonArray?.mapNotNull { el ->
             val o = el.jsonObject
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val permalink = o["permalink"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val permalink = o["permalink"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             Entry(
                 id,
                 permalink.removePrefix("$baseUrl/").trimStart('/'),
                 title,
-                abs(o["thumbnail"]?.jsonPrimitive?.content),
+                abs(o["thumbnail"]?.jsonPrimitive?.contentOrNull),
                 ContentType.NOVEL,
             )
         } ?: emptyList()
@@ -144,14 +145,14 @@ class StorySeedlingSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 }.getOrNull()
                 tocRoot?.get("data")?.jsonArray?.forEach { el ->
                     val o = el.jsonObject
-                    val url = o["url"]?.jsonPrimitive?.content ?: return@forEach
-                    val slugNumber = o["slug"]?.jsonPrimitive?.content?.toFloatOrNull()
+                    val url = o["url"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                    val slugNumber = o["slug"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
                     chapters.add(
                         Episode(
                             id = url.removePrefix("$baseUrl/").trimStart('/'),
-                            name = o["title"]?.jsonPrimitive?.content ?: "Chapter $slugNumber",
+                            name = o["title"]?.jsonPrimitive?.contentOrNull ?: "Chapter $slugNumber",
                             number = slugNumber,
-                            dateMillis = parseDate(o["date"]?.jsonPrimitive?.content),
+                            dateMillis = parseDate(o["date"]?.jsonPrimitive?.contentOrNull),
                         ),
                     )
                 }
@@ -200,7 +201,7 @@ class StorySeedlingSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         val result = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
         if (result != null && result["success"]?.jsonPrimitive?.booleanOrNull == false) {
-            val message = result["message"]?.jsonPrimitive?.content
+            val message = result["message"]?.jsonPrimitive?.contentOrNull
             if (message == "Invalid security.") {
                 if (updatedNonce) return emptyList()
                 nonce = null

@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -32,16 +33,16 @@ class NovelHiSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val arr = json(b.build()).jsonObject["data"]?.jsonObject?.get("list") as? JsonArray ?: JsonArray(emptyList())
         val items = arr.mapNotNull { el ->
             val o = el.jsonObject
-            val simple = o["simpleName"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val title = o["bookName"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val simple = o["simpleName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = o["bookName"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             val path = "s/$simple"
-            val cover = o["picUrl"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() && it != "null" }
+            val cover = o["picUrl"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() && it != "null" }
             cache[path] = Info(
                 title, cover,
-                o["bookDesc"]?.jsonPrimitive?.content.orEmpty(),
-                o["authorName"]?.jsonPrimitive?.content.orEmpty(),
-                o["bookStatus"]?.jsonPrimitive?.content.orEmpty(),
-                (o["genres"] as? JsonArray)?.mapNotNull { g -> g.jsonObject["genreName"]?.jsonPrimitive?.content }.orEmpty(),
+                o["bookDesc"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                o["authorName"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                o["bookStatus"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                (o["genres"] as? JsonArray)?.mapNotNull { g -> g.jsonObject["genreName"]?.jsonPrimitive?.contentOrNull }.orEmpty(),
             )
             if (cache.size > 100) cache.remove(cache.keys.first())
             Entry(id, path, title, cover, ContentType.NOVEL)
@@ -90,12 +91,12 @@ class NovelHiSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val arr = json(url).jsonObject["data"]?.jsonObject?.get("list") as? JsonArray ?: return emptyList()
         return arr.mapNotNull { el ->
             val c = el.jsonObject
-            val num = c["indexNum"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val num = c["indexNum"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             Episode(
                 id = "$entryId/$num",
-                name = c["indexName"]?.jsonPrimitive?.content ?: "Chapter $num",
+                name = c["indexName"]?.jsonPrimitive?.contentOrNull ?: "Chapter $num",
                 number = num.toFloatOrNull(),
-                dateMillis = parseDate(c["createTime"]?.jsonPrimitive?.content, "yyyy-MM-dd HH:mm:ss"),
+                dateMillis = parseDate(c["createTime"]?.jsonPrimitive?.contentOrNull, "yyyy-MM-dd HH:mm:ss"),
             )
         }.reversed()
     }
@@ -120,7 +121,7 @@ class NovelHiSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val req = request(contentUrl).newBuilder()
             .header("Referer", url).header("X-Requested-With", "XMLHttpRequest").build()
         val body = client.newCall(req).bodyString()
-        val content = json.parseToJsonElement(body).jsonObject["data"]?.jsonObject?.get("content")?.jsonPrimitive?.content
+        val content = json.parseToJsonElement(body).jsonObject["data"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
             ?: return emptyList()
         val html = rot13(content)
             .replace(Regex("<sent\\b", RegexOption.IGNORE_CASE), "<p")

@@ -18,7 +18,7 @@ class MyLastedSource(client: OkHttpClient) : ScraperNovelSource(client) {
     override val baseUrl = "https://mylasted.blogspot.com"
     override val lang = "en"
 
-    private fun t(e: JsonElement?): String? = ((e as? JsonObject)?.get("\$t") as? JsonPrimitive)?.contentOrNull
+    private fun t(e: JsonElement?): String? = ((e as? JsonObject)?.get("\$t") as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
 
     private suspend fun feed(label: String, start: Int = 1, summary: Boolean = false): JsonObject {
         val kind = if (summary) "summary" else "default"
@@ -29,8 +29,8 @@ class MyLastedSource(client: OkHttpClient) : ScraperNovelSource(client) {
     private fun total(f: JsonObject) = t(f["openSearch\$totalResults"])?.toIntOrNull() ?: 0
 
     private fun altHref(e: JsonObject): String? =
-        e["link"]?.jsonArray?.firstOrNull { (it as? JsonObject)?.get("rel")?.let { r -> (r as? JsonPrimitive)?.contentOrNull } == "alternate" }
-            ?.jsonObject?.get("href")?.let { (it as? JsonPrimitive)?.contentOrNull }
+        e["link"]?.jsonArray?.firstOrNull { (it as? JsonObject)?.get("rel")?.let { r -> (r as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } == "alternate" }
+            ?.jsonObject?.get("href")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
 
     private fun pathOf(href: String): String = java.net.URI(href).path
 

@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -125,15 +126,15 @@ class PenguinSquadSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val eps = ArrayList<Episode>()
         val payload = extractPayload(html)
         val chs = payload?.get("chapters") as? JsonArray
-        val slug = payload?.get("novelSlug")?.jsonPrimitive?.content
+        val slug = payload?.get("novelSlug")?.jsonPrimitive?.contentOrNull
         if (chs != null && slug != null) {
             for (el in chs) {
                 val c = el.jsonObject
                 val cs = (c["slug"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
-                val num = c["chapter_number"]?.jsonPrimitive?.content?.toFloatOrNull()
+                val num = c["chapter_number"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
                 eps += Episode(
                     id = "novels/$slug/$cs",
-                    name = chapterName((c["title"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty(), num, c["premium"]?.jsonPrimitive?.content == "true"),
+                    name = chapterName((c["title"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty(), num, c["premium"]?.jsonPrimitive?.contentOrNull == "true"),
                     number = num,
                     dateMillis = parseDate((c["published_at"] as? JsonPrimitive)?.takeIf { it.isString }?.content),
                 )

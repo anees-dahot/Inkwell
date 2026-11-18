@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URLEncoder
 import kotlinx.serialization.json.JsonElement
@@ -19,7 +20,7 @@ class InkittSource(client: OkHttpClient) : ScraperNovelSource(client) {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private fun str(e: JsonElement?): String? =
-        runCatching { e?.jsonPrimitive?.content }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
+        runCatching { e?.jsonPrimitive?.contentOrNull }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
 
     private fun parseStories(data: JsonElement): PagedResult<Entry> {
         val items = data.jsonObject["stories"]?.jsonArray?.mapNotNull { el ->

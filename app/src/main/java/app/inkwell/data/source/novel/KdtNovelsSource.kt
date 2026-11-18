@@ -231,13 +231,13 @@ class KdtNovelsSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val chapters = (o["chapters"] as? JsonArray)?.mapNotNull { el ->
             val c = el as? JsonObject ?: return@mapNotNull null
             KdtChapter(
-                slug = c["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                no = c["chapter_no"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                slug = c["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                no = c["chapter_no"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
                 subtitle = c["subtitle"]?.jsonPrimitive?.contentOrNull,
                 locked = c["locked"]?.jsonPrimitive?.booleanOrNull ?: false,
             )
         } ?: return null
-        return KdtGroup(o["label"]?.jsonPrimitive?.content ?: "", chapters)
+        return KdtGroup(o["label"]?.jsonPrimitive?.contentOrNull ?: "", chapters)
     }
 
     // ---- helpers -----------------------------------------------------------

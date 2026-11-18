@@ -117,7 +117,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .build()
         val root = json(url).jsonObject
         (root["error"] as? JsonObject)?.let { err ->
-            val info = err["info"]?.let { (it as? JsonPrimitive)?.contentOrNull }
+            val info = err["info"]?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
             throw IllegalStateException("Baka-Tsuki API error: $info")
         }
         return root
@@ -148,9 +148,9 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
             cmcontinue?.let { params["cmcontinue"] = it }
             val json = query(params)
             jsonObjArray(json, "query", "categorymembers")?.forEach { el ->
-                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull }?.let { titles.add(it) }
+                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }?.let { titles.add(it) }
             }
-            cmcontinue = (json["continue"] as? JsonObject)?.get("cmcontinue")?.let { (it as? JsonPrimitive)?.contentOrNull }
+            cmcontinue = (json["continue"] as? JsonObject)?.get("cmcontinue")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
         } while (cmcontinue != null)
         return titles
     }
@@ -195,8 +195,8 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 val covers = HashMap<String, String>()
                 jsonObjArray(json, "query", "pages")?.forEach { el ->
                     val page = el as? JsonObject ?: return@forEach
-                    val title = page["title"]?.let { (it as? JsonPrimitive)?.contentOrNull } ?: return@forEach
-                    val thumb = (page["thumbnail"] as? JsonObject)?.get("source")?.let { (it as? JsonPrimitive)?.contentOrNull }
+                    val title = page["title"]?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } ?: return@forEach
+                    val thumb = (page["thumbnail"] as? JsonObject)?.get("source")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
                     if (thumb != null) covers[title] = thumb
                 }
                 for (idx in novels.indices) {
@@ -226,7 +226,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val seen = mutableSetOf<String>()
         val ordered = mutableListOf<String>()
         jsonObjArray(json, "query", "recentchanges")?.forEach { el ->
-            val title = (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull } ?: return@forEach
+            val title = (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } ?: return@forEach
             val parent = title.substringBefore(':').trim()
             val project = when {
                 catalogueSet.contains(title) -> title
@@ -299,7 +299,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 ),
             )
             val titles = jsonObjArray(json, "query", "search").orEmpty()
-                .mapNotNull { (it as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull } }
+                .mapNotNull { (it as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } }
                 .filter { isNovelTitle(it) }
             return PagedResult(withCovers(dropEmptyProjects(titles)), titles.size >= pageSize)
         }
@@ -331,10 +331,10 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         val remote = buildList {
             jsonObjArray(prefix ?: JsonObject(emptyMap()), "query", "prefixsearch")?.forEach { el ->
-                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull }?.let { add(it) }
+                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }?.let { add(it) }
             }
             jsonObjArray(fullText ?: JsonObject(emptyMap()), "query", "search")?.forEach { el ->
-                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull }?.let { add(it) }
+                (el as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }?.let { add(it) }
             }
         }
         for (title in remote) {
@@ -432,10 +432,10 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
             )
         }
 
-        val pageTitle = page["title"]?.let { (it as? JsonPrimitive)?.contentOrNull } ?: requestedTitle
-        val cover = (page["thumbnail"] as? JsonObject)?.get("source")?.let { (it as? JsonPrimitive)?.contentOrNull }
+        val pageTitle = page["title"]?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } ?: requestedTitle
+        val cover = (page["thumbnail"] as? JsonObject)?.get("source")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
         val categories = jsonObjArray(page, "categories").orEmpty()
-            .mapNotNull { (it as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.contentOrNull } }
+            .mapNotNull { (it as? JsonObject)?.get("title")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } }
 
         val genres = categories.mapNotNull { genrePattern.find(it)?.groupValues?.get(1)?.trim() }
         val author = resolveAuthor(categories)
@@ -443,7 +443,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         return EntryDetails(
             entry = Entry(id, entryId, pageTitle, abs(cover), ContentType.NOVEL),
-            description = extractSummary(page["extract"]?.let { (it as? JsonPrimitive)?.contentOrNull }),
+            description = extractSummary(page["extract"]?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }),
             authors = listOfNotNull(author),
             genres = genres,
             status = resolveStatus(categories, pageTitle),
@@ -524,7 +524,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 ),
             )
         }.getOrNull()
-        val html = (json?.get("parse") as? JsonObject)?.get("text")?.let { (it as? JsonPrimitive)?.contentOrNull } ?: return emptyList()
+        val html = (json?.get("parse") as? JsonObject)?.get("text")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } ?: return emptyList()
 
         val d = Jsoup.parseBodyFragment(html)
         val fullTitle = novelTitle.replace('_', ' ')
@@ -630,9 +630,9 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 )
                 jsonObjArray(json, "query", "pages")?.forEach { el ->
                     val page = el as? JsonObject ?: return@forEach
-                    val pageTitle = page["title"]?.let { (it as? JsonPrimitive)?.contentOrNull } ?: return@forEach
+                    val pageTitle = page["title"]?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } ?: return@forEach
                     val timestamp = jsonObjArray(page, "revisions")?.firstOrNull()
-                        ?.let { rev -> (rev as? JsonObject)?.get("timestamp")?.let { (it as? JsonPrimitive)?.contentOrNull } }
+                        ?.let { rev -> (rev as? JsonObject)?.get("timestamp")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull } }
                     val index = byTitle[pageTitle]
                     if (timestamp != null && index != null && timestamp.length >= 10) {
                         chapters[index] = chapters[index].copy(
@@ -661,7 +661,7 @@ class BakaTsukiSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 ),
             )
         }.getOrNull()
-        val html = (json?.get("parse") as? JsonObject)?.get("text")?.let { (it as? JsonPrimitive)?.contentOrNull }
+        val html = (json?.get("parse") as? JsonObject)?.get("text")?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
             ?: return listOf("This chapter is not available on Baka-Tsuki.")
 
         val d = Jsoup.parseBodyFragment(html)

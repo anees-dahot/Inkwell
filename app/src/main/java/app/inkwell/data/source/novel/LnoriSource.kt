@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import org.jsoup.nodes.Element
+import kotlinx.serialization.json.contentOrNull
 
 import app.inkwell.data.model.*
 import app.inkwell.data.source.*
@@ -81,7 +82,7 @@ class LnoriSource(client: OkHttpClient) : ScraperNovelSource(client) {
             runCatching {
                 kotlinx.serialization.json.Json { ignoreUnknownKeys = true; isLenient = true }
                     .parseToJsonElement(attr).jsonArray
-                    .mapNotNull { el -> el.jsonObject["name"]?.jsonPrimitive?.content }
+                    .mapNotNull { el -> el.jsonObject["name"]?.jsonPrimitive?.contentOrNull }
             }.getOrNull()
         }?.filter { it.isNotBlank() }
             ?: d.select("nav.tags-box.desktop a, nav.tags-box a").eachText().map { it.trim() }.filter { it.isNotEmpty() }

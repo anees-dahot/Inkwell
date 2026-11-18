@@ -29,6 +29,7 @@ fun Modifier.zoomable(
     maxScale: Float = 4f,
     doubleTapScale: Float = 2.5f,
     onTap: (Offset) -> Unit = {},
+    onLongPress: ((Offset) -> Unit)? = null,
     onZoomChanged: (Boolean) -> Unit = {},
 ): Modifier {
     val scope = rememberCoroutineScope()
@@ -38,6 +39,7 @@ fun Modifier.zoomable(
     var size by remember { mutableStateOf(IntSize.Zero) }
     val onZoom by rememberUpdatedState(onZoomChanged)
     val onTapState by rememberUpdatedState(onTap)
+    val onLongState by rememberUpdatedState(onLongPress)
 
     LaunchedEffect(Unit) { snapshotFlow { scale.value > 1.02f }.collect { onZoom(it) } }
 
@@ -64,6 +66,7 @@ fun Modifier.zoomable(
         .pointerInput(Unit) {
             detectTapGestures(
                 onTap = { onTapState(it) },
+                onLongPress = { off -> onLongState?.invoke(off) },
                 onDoubleTap = { tap ->
                     scope.launch {
                         if (scale.value > 1.05f) {

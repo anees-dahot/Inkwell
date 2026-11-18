@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -65,12 +66,12 @@ class MaehwaSupSource(client: OkHttpClient) : ScraperNovelSource(client) {
             received += posts.size
             for (post in posts) {
                 val o = post.jsonObject
-                val rawTitle = o["title"]?.jsonPrimitive?.content ?: continue
+                val rawTitle = o["title"]?.jsonPrimitive?.contentOrNull ?: continue
                 val chapterName = Jsoup.parse(rawTitle).text().trim()
                 if (!Regex("chapter|side story|spinoff|prologue|epilogue", RegexOption.IGNORE_CASE)
                     .containsMatchIn(chapterName)
                 ) continue
-                val url = o["URL"]?.jsonPrimitive?.content?.let { it.toHttpUrlOrNull() } ?: continue
+                val url = o["URL"]?.jsonPrimitive?.contentOrNull?.let { it.toHttpUrlOrNull() } ?: continue
                 if (!url.host.equals(baseUrl.removePrefix("https://"), ignoreCase = true)) continue
                 val path = url.encodedPath.trimStart('/')
                 if (!seen.add(path)) continue
@@ -80,7 +81,7 @@ class MaehwaSupSource(client: OkHttpClient) : ScraperNovelSource(client) {
                     id = path,
                     name = chapterName,
                     number = number,
-                    dateMillis = parseDate(o["date"]?.jsonPrimitive?.content),
+                    dateMillis = parseDate(o["date"]?.jsonPrimitive?.contentOrNull),
                 )
             }
         }

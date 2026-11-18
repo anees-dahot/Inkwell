@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URI
 import kotlinx.serialization.json.jsonObject
@@ -38,8 +39,8 @@ class CraneAnimeSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .let { it as kotlinx.serialization.json.JsonArray }
         arr.mapNotNull {
             val o = it.jsonObject
-            val c = o["count"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
-            if (c > 0) o["slug"]?.jsonPrimitive?.content else null
+            val c = o["count"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+            if (c > 0) o["slug"]?.jsonPrimitive?.contentOrNull else null
         }.toSet()
     }.getOrNull()
 

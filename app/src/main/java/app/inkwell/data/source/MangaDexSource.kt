@@ -65,9 +65,9 @@ class MangaDexSource(
     }
 
     private fun coverOf(obj: JsonObject, size: Int = 256): String? {
-        val id = obj["id"]?.jsonPrimitive?.content ?: return null
+        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
         val rel = obj["relationships"]?.jsonArray?.map { it.jsonObject }
-            ?.firstOrNull { it["type"]?.jsonPrimitive?.content == "cover_art" } ?: return null
+            ?.firstOrNull { it["type"]?.jsonPrimitive?.contentOrNull == "cover_art" } ?: return null
         val file = rel["attributes"]?.jsonObject?.get("fileName")?.jsonPrimitive?.contentOrNull ?: return null
         return "https://uploads.mangadex.org/covers/$id/$file.$size.jpg"
     }
@@ -91,7 +91,7 @@ class MangaDexSource(
         val obj = get(url)["data"]!!.jsonObject
         val attrs = obj["attributes"]!!.jsonObject
         val authors = obj["relationships"]?.jsonArray?.map { it.jsonObject }
-            ?.filter { it["type"]?.jsonPrimitive?.content in setOf("author", "artist") }
+            ?.filter { it["type"]?.jsonPrimitive?.contentOrNull in setOf("author", "artist") }
             ?.mapNotNull { it["attributes"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull }
             ?.distinct() ?: emptyList()
         val tags = attrs["tags"]?.jsonArray?.mapNotNull {
@@ -140,7 +140,7 @@ class MangaDexSource(
                     if (title != null) append(" - ").append(title)
                 }
                 val group = o["relationships"]?.jsonArray?.map { it.jsonObject }
-                    ?.firstOrNull { it["type"]?.jsonPrimitive?.content == "scanlation_group" }
+                    ?.firstOrNull { it["type"]?.jsonPrimitive?.contentOrNull == "scanlation_group" }
                     ?.get("attributes")?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
                 val date = a["publishAt"]?.jsonPrimitive?.contentOrNull?.let {
                     runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()

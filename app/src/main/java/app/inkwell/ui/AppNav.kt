@@ -16,6 +16,8 @@ import app.inkwell.ui.components.LocalSharedScope
 import app.inkwell.ui.motion.LocalReducedMotion
 import app.inkwell.ui.motion.Motion
 import app.inkwell.ui.screens.DetailsScreen
+import app.inkwell.ui.screens.DownloadsScreen
+import app.inkwell.ui.screens.GlobalSearchScreen
 import app.inkwell.ui.screens.NovelReaderScreen
 import app.inkwell.ui.screens.PlayerScreen
 import app.inkwell.ui.screens.ReaderScreen
@@ -30,6 +32,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable object MainRoute
 @Serializable object UpcomingRoute
+@Serializable object DownloadsRoute
+@Serializable data class GlobalSearchRoute(val type: String, val query: String)
 @Serializable data class DetailsRoute(val sourceId: String, val entryId: String, val title: String, val coverUrl: String? = null)
 @Serializable data class ReaderRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class NovelRoute(val sourceId: String, val entryId: String, val episodeId: String)
@@ -78,6 +82,8 @@ fun AppNav() {
                         onOpenUpdate = { openEpisode(it.sourceId, it.entryId, it.episodeId) },
                         onOpenHistory = { openEpisode(it.sourceId, it.entryId, it.episodeId) },
                         onOpenUpcoming = { nav.navigate(UpcomingRoute) },
+                        onOpenDownloads = { nav.navigate(DownloadsRoute) },
+                        onSearchAll = { t, q -> nav.navigate(GlobalSearchRoute(t.name, q)) },
                     )
                 }
             }
@@ -117,6 +123,17 @@ fun AppNav() {
                     onBack = { nav.popBackStack() },
                     onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                 )
+            }
+            composable<DownloadsRoute> {
+                DownloadsScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
+                )
+            }
+            composable<GlobalSearchRoute> { e ->
+                val r = e.toRoute<GlobalSearchRoute>()
+                GlobalSearchScreen(r.type, r.query, onBack = { nav.popBackStack() },
+                    onOpen = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) })
             }
             composable<WebViewRoute> { e ->
                 WebViewScreen(e.toRoute<WebViewRoute>().url, onBack = { nav.popBackStack() })

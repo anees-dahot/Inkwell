@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -44,9 +45,9 @@ class LightNovelWorldSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .addQueryParameter("search_type", "title").build()).jsonObject
         val items = root["novels"]?.jsonArray?.mapNotNull { el ->
             val o = el.jsonObject
-            val slug = o["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val cover = o["cover_path"]?.jsonPrimitive?.content
+            val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val cover = o["cover_path"]?.jsonPrimitive?.contentOrNull
             Entry(id, "novel/$slug/", title, cover?.let { abs(it) }, ContentType.NOVEL)
         } ?: emptyList()
         return PagedResult(items, false)
@@ -57,7 +58,7 @@ class LightNovelWorldSource(client: OkHttpClient) : ScraperNovelSource(client) {
     private suspend fun chapterPages(slug: String): List<Episode> {
         val apiBase = absPath("api/novel/$slug/chapters/?limit=500")
         val first = json("$apiBase&offset=0").jsonObject
-        val total = first["total_chapters"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+        val total = first["total_chapters"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
         val raw = mutableListOf<kotlinx.serialization.json.JsonElement>()
         first["chapters"]?.jsonArray?.let { raw.addAll(it) }
         var offset = 500
@@ -67,11 +68,11 @@ class LightNovelWorldSource(client: OkHttpClient) : ScraperNovelSource(client) {
         }
         return raw.mapNotNull { el ->
             val o = el.jsonObject
-            val number = o["number"]?.jsonPrimitive?.content?.toFloatOrNull()
-            val title = o["title"]?.jsonPrimitive?.content?.trim().takeUnless { it.isNullOrEmpty() }
+            val number = o["number"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+            val title = o["title"]?.jsonPrimitive?.contentOrNull?.trim().takeUnless { it.isNullOrEmpty() }
             Episode(
-                id = "novel/$slug/chapter/${o["number"]?.jsonPrimitive?.content}/",
-                name = title ?: "Chapter ${o["number"]?.jsonPrimitive?.content}",
+                id = "novel/$slug/chapter/${o["number"]?.jsonPrimitive?.contentOrNull}/",
+                name = title ?: "Chapter ${o["number"]?.jsonPrimitive?.contentOrNull}",
                 number = number,
                 dateMillis = null,
             )

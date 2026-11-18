@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URLEncoder
 import kotlinx.serialization.json.jsonArray
@@ -100,13 +101,13 @@ class IndraTranslationsSource(client: OkHttpClient) : ScraperNovelSource(client)
             val list = runCatching {
                 json.parseToJsonElement(raw).jsonArray.mapNotNull { el ->
                     val o = el.jsonObject
-                    val link = o["link"]?.jsonPrimitive?.content?.ifEmpty { null } ?: return@mapNotNull null
-                    val title = clean(o["title"]?.jsonPrimitive?.content)
-                    val vip = o["vip"]?.jsonPrimitive?.content?.toDoubleOrNull() == 1.0
+                    val link = o["link"]?.jsonPrimitive?.contentOrNull?.ifEmpty { null } ?: return@mapNotNull null
+                    val title = clean(o["title"]?.jsonPrimitive?.contentOrNull)
+                    val vip = o["vip"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() == 1.0
                     Episode(
                         relative(link), (if (vip) "🔒 " else "") + title,
-                        o["num"]?.jsonPrimitive?.content?.toFloatOrNull() ?: chapterNum(title),
-                        parseDate(o["date"]?.jsonPrimitive?.content),
+                        o["num"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: chapterNum(title),
+                        parseDate(o["date"]?.jsonPrimitive?.contentOrNull),
                     )
                 }
             }.getOrNull()

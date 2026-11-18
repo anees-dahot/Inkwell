@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -87,9 +88,9 @@ class LupusSenseiSource(client: OkHttpClient) : ScraperNovelSource(client) {
             for (entry in root["feed"]?.jsonObject?.get("entry")?.jsonArray ?: emptyList()) {
                 val o = entry.jsonObject
                 val href = (o["link"]?.jsonArray ?: emptyList())
-                    .firstOrNull { it.jsonObject["rel"]?.jsonPrimitive?.content == "alternate" }
-                    ?.jsonObject?.get("href")?.jsonPrimitive?.content
-                val thumbnail = o["media\$thumbnail"]?.jsonObject?.get("url")?.jsonPrimitive?.content
+                    .firstOrNull { it.jsonObject["rel"]?.jsonPrimitive?.contentOrNull == "alternate" }
+                    ?.jsonObject?.get("href")?.jsonPrimitive?.contentOrNull
+                val thumbnail = o["media\$thumbnail"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
                 if (href.isNullOrBlank() || thumbnail.isNullOrBlank()) continue
                 val path = baseUrl.toHttpUrlOrNull()?.resolve(href)?.encodedPath ?: continue
                 covers[path] = Regex("/s\\d+(-w\\d+-h\\d+)?(-c)?/").replace(thumbnail, "/s640/")

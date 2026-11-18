@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URI
 import java.net.URLEncoder
@@ -90,18 +91,18 @@ class CrimsonScrollsSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 ).jsonObject
                 o["items"]?.jsonArray?.forEach { el ->
                     val c = el.jsonObject
-                    val num = c["number"]?.jsonPrimitive?.content.orEmpty()
-                    val title = c["title"]?.jsonPrimitive?.content?.trim().orEmpty()
+                    val num = c["number"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val title = c["title"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
                     val nm = "Chapter $num" + if (title.isNotEmpty() && title != "null") ": $title" else ""
-                    val url = c["url"]?.jsonPrimitive?.content ?: return@forEach
+                    val url = c["url"]?.jsonPrimitive?.contentOrNull ?: return@forEach
                     out.add(
                         Episode(
                             toPath(url), if (locked) "🔒 $nm" else nm,
-                            (out.size + 1).toFloat(), parseDate(c["date"]?.jsonPrimitive?.content),
+                            (out.size + 1).toFloat(), parseDate(c["date"]?.jsonPrimitive?.contentOrNull),
                         ),
                     )
                 }
-                pages = o["pages"]?.jsonPrimitive?.content?.toIntOrNull() ?: 1
+                pages = o["pages"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 1
                 page++
             } while (page <= pages)
         }

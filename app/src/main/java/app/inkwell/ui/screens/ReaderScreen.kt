@@ -1,40 +1,37 @@
 package app.inkwell.ui.screens
 
-import androidx.compose.runtime.saveable.rememberSaveable
+import android.widget.Toast
 import androidx.activity.compose.LocalActivity
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerDefaults
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
-import androidx.compose.material.icons.outlined.ViewAgenda
-import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -46,168 +43,154 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import app.inkwell.AppContainer
-import app.inkwell.data.ReaderDirection
-import app.inkwell.data.ReaderMode
-import app.inkwell.data.model.Entry
-import app.inkwell.data.model.Episode
-import app.inkwell.data.model.MangaSource
-import app.inkwell.data.model.Page
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.inkwell.data.ReaderBackground
+import app.inkwell.data.ReaderViewMode
 import app.inkwell.ui.components.*
 import app.inkwell.ui.motion.LocalReducedMotion
 import app.inkwell.ui.motion.Motion
 import app.inkwell.ui.motion.pressable
+import app.inkwell.ui.screens.reader.*
 import app.inkwell.ui.theme.InkType
 import app.inkwell.ui.theme.LocalInk
 import coil3.SingletonImageLoader
-import coil3.compose.SubcomposeAsyncImage
-import coil3.request.ImageRequest
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
-class ReaderViewModel(
-    private val c: AppContainer,
-    private val sourceId: String,
-    private val entryId: String,
-    private val startEpisodeId: String,
-) : ViewModel() {
-    var entry by mutableStateOf<Entry?>(null); private set
-    var genres by mutableStateOf<List<String>>(emptyList()); private set
-    var episodes by mutableStateOf<List<Episode>>(emptyList()); private set
-    var current by mutableStateOf<Episode?>(null); private set
-    var pages by mutableStateOf<List<Page>>(emptyList()); private set
-    var initialPage by mutableIntStateOf(0); private set
-    var loading by mutableStateOf(true); private set
-    var error by mutableStateOf<String?>(null); private set
-
-    init { start() }
-
-    fun start() {
-        viewModelScope.launch {
-            loading = true; error = null
-            try {
-                val d = c.repo.details(sourceId, entryId)
-                entry = d.entry; genres = d.genres
-                episodes = c.repo.episodes(sourceId, entryId)
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = e.message ?: "Could not load"; loading = false; return@launch }
-            open(current?.id ?: startEpisodeId)
-        }
-    }
-
-    fun open(episodeId: String) {
-        viewModelScope.launch {
-            loading = true; error = null
-            try {
-                val ep = episodes.firstOrNull { it.id == episodeId } ?: error("Chapter not found")
-                val pg = c.repo.pages(sourceId, entryId, episodeId)
-                if (pg.isEmpty()) error("This chapter has no pages")
-                val prog = c.repo.getProgress(sourceId, entryId, episodeId)
-                initialPage = if (prog != null && !prog.read) prog.page.coerceIn(0, pg.lastIndex) else 0
-                current = ep
-                pages = pg
-                c.repo.saveProgress(entry!!, ep, initialPage, pg.size, false)
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = e.message ?: "Could not load pages" }
-            finally { loading = false }
-        }
-    }
-
-    fun onPage(index: Int, lastVisible: Int) {
-        val ep = current ?: return
-        val en = entry ?: return
-        viewModelScope.launch { c.repo.saveProgress(en, ep, index, pages.size, lastVisible >= pages.lastIndex) }
-    }
-
-    /** Index in [episodes] (newest first). */
-    private fun idx() = episodes.indexOfFirst { it.id == current?.id }
-    fun nextEpisode(): Episode? = idx().takeIf { it > 0 }?.let { episodes[it - 1] }
-    fun prevEpisode(): Episode? = idx().takeIf { it >= 0 && it < episodes.lastIndex }?.let { episodes[it + 1] }
-
-    fun defaultMode(): Int {
-        val s = c.settings
-        val rtl = s.readerDirection.value == ReaderDirection.RTL
-        return when (s.readerMode.value) {
-            ReaderMode.WEBTOON -> 0
-            ReaderMode.PAGED -> if (rtl) 2 else 1
-            ReaderMode.AUTO -> if (genres.any { it.equals("Long Strip", true) }) 0 else if (rtl) 2 else 1
-        }
-    }
-}
-
-private val MODE_LABELS = listOf("Webtoon", "Paged →", "Paged ←")
-
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: () -> Unit) {
-    val vm = inkViewModel("reader/$sourceId/$entryId") { ReaderViewModel(it, sourceId, entryId, episodeId) }
+    val context = LocalContext.current
+    val vm = inkViewModel("reader/$sourceId/$entryId") { ReaderViewModel(it, sourceId, entryId, episodeId, context.applicationContext) }
     val ink = LocalInk.current
     val reduced = LocalReducedMotion.current
+    val prefs = LocalContainer.current.settings.reader
     var overlay by rememberSaveable { mutableStateOf(true) }
-    var modeOverride by rememberSaveable { mutableStateOf<Int?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    var actionPage by remember { mutableStateOf<RItem.Pg?>(null) }
     val hazeState = remember { HazeState() }
     val activity = LocalActivity.current
     val view = LocalView.current
-    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val nav = remember { ReaderNav() }
+    val focus = remember { FocusRequester() }
 
-    // keep screen on + dark status bar icons while reading
+    val scale by prefs.scale.collectAsStateWithLifecycle()
+    val bgPref by prefs.background.collectAsStateWithLifecycle()
+    val tapZones by prefs.tapZones.collectAsStateWithLifecycle()
+    val keepOn by prefs.keepScreenOn.collectAsStateWithLifecycle()
+    val pageNum by prefs.pageNumber.collectAsStateWithLifecycle()
+    val volumeKeys by prefs.volumeKeys.collectAsStateWithLifecycle()
+    val gap by prefs.webtoonGap.collectAsStateWithLifecycle()
+    val brightness by prefs.brightness.collectAsStateWithLifecycle()
+    val cfg = ReaderConfig(scale, bgPref, tapZones, gap)
+    val bgColor = when (bgPref) { ReaderBackground.BLACK -> Color.Black; ReaderBackground.WHITE -> Color.White; ReaderBackground.GRAY -> Color(0xFF3A3A3C) }
+
+    // dark status bar icons while reading, restore on exit
     DisposableEffect(Unit) {
-        view.keepScreenOn = true
         val ctl = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
         val prevLight = ctl?.isAppearanceLightStatusBars
         ctl?.isAppearanceLightStatusBars = false
         onDispose {
-            view.keepScreenOn = false
             ctl?.show(WindowInsetsCompat.Type.systemBars())
             if (prevLight != null) ctl.isAppearanceLightStatusBars = prevLight
         }
+    }
+    DisposableEffect(keepOn) {
+        view.keepScreenOn = keepOn
+        onDispose { view.keepScreenOn = false }
+    }
+    DisposableEffect(brightness) {
+        val w = activity?.window
+        if (w != null) w.attributes = w.attributes.also { it.screenBrightness = if (brightness < 0f) -1f else brightness }
+        onDispose { if (w != null) w.attributes = w.attributes.also { it.screenBrightness = -1f } }
     }
     LaunchedEffect(overlay) {
         val ctl = activity?.window?.let { WindowCompat.getInsetsController(it, view) } ?: return@LaunchedEffect
         ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (overlay) ctl.show(WindowInsetsCompat.Type.systemBars()) else ctl.hide(WindowInsetsCompat.Type.systemBars())
     }
+    LaunchedEffect(showSettings, actionPage, vm.generation, vm.loading) { runCatching { focus.requestFocus() } }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        val ep = vm.current
-        when {
-            vm.error != null && vm.pages.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                ErrorState(vm.error!!, webViewUrl = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl, onRetry = { if (vm.episodes.isEmpty()) vm.start() else vm.open(ep?.id ?: episodeId) })
+    Box(
+        Modifier.fillMaxSize().background(bgColor)
+            .onPreviewKeyEvent { e ->
+                if (!volumeKeys || (e.key != Key.VolumeUp && e.key != Key.VolumeDown)) false
+                else {
+                    if (e.type == KeyEventType.KeyDown) { if (e.key == Key.VolumeUp) nav.prev() else nav.next() }
+                    true
+                }
             }
-            vm.loading || ep == null -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+            .focusRequester(focus).focusable(),
+    ) {
+        val items = vm.items
+        val mode = vm.mode
+        when {
+            vm.error != null && vm.chapters.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                ErrorState(vm.error!!, webViewUrl = (LocalContainer.current.registry.find(sourceId) as? app.inkwell.data.source.ScraperSource)?.baseUrl, onRetry = {
+                    if (vm.episodes.isEmpty()) vm.start() else vm.open(vm.chapters.firstOrNull()?.ep?.id ?: episodeId)
+                })
+            }
+            vm.loading || mode == null || items.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Box(Modifier.fillMaxWidth().aspectRatio(0.7f).shimmer())
             }
-            else -> key(ep.id) {
-                val mode = modeOverride ?: vm.defaultMode()
-                var current by remember { mutableIntStateOf(vm.initialPage) }
+            else -> key(vm.generation, mode) {
+                var curIdx by remember { mutableIntStateOf(vm.initialItem) }
+                var lastIdx by remember { mutableIntStateOf(vm.initialItem) }
                 var seekTo by remember { mutableStateOf<Int?>(null) }
-                val total = vm.pages.size
                 val haptic = LocalHapticFeedback.current
+                val cur = items.getOrNull(curIdx)
+                val curEp = when (cur) { is RItem.Pg -> cur.ep; is RItem.Trans -> cur.from; null -> vm.chapters.first().ep }
+                val total = (cur as? RItem.Pg)?.total ?: (cur as? RItem.Trans)?.total ?: 1
+                val page = ((cur as? RItem.Pg)?.idx ?: (total - 1)).coerceIn(0, total - 1)
+                val chapterStart = items.indexOfFirst { it is RItem.Pg && it.ep.id == curEp.id && it.idx == 0 }.coerceAtLeast(0)
+
+                // progress (debounced), mark read on last page
+                LaunchedEffect(Unit) {
+                    snapshotFlow { curIdx to lastIdx }.debounce(250).collect { (c, l) -> vm.report(vm.items.getOrNull(c), vm.items.getOrNull(l)) }
+                }
+                // seamless: load next chapter when nearing the end of the last loaded one
+                LaunchedEffect(curIdx, vm.chapters.size) {
+                    val last = vm.chapters.lastOrNull() ?: return@LaunchedEffect
+                    val p = cur
+                    val near = (p is RItem.Pg && p.ep.id == last.ep.id && p.idx >= p.total - 6) || (p is RItem.Trans && p.from.id == last.ep.id)
+                    if (near && !vm.nextError) vm.loadNext()
+                }
+                // prefetch the next pages (this chapter and the start of the next)
+                LaunchedEffect(curIdx, vm.chapters.size) {
+                    val loader = SingletonImageLoader.get(context)
+                    val original = scale == app.inkwell.data.ReaderScale.ORIGINAL
+                    for (i in 1..4) (vm.items.getOrNull(curIdx + i) as? RItem.Pg)?.let {
+                        if (mode == ReaderViewMode.WEBTOON) prefetchPage(context, it.page.imageUrl)
+                        else loader.enqueue(pageRequest(context, it.page.imageUrl, original))
+                    }
+                }
+                LaunchedEffect(curIdx) { if (cur is RItem.Pg && cur.idx == cur.total - 1 && cur.total > 1) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
 
                 Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
-                    if (mode == 0) WebtoonReader(
-                        vm, current, seekTo, { overlay = !overlay },
-                        onPage = { p, last -> current = p; vm.onPage(p, last) },
-                        onSeekDone = { seekTo = null },
-                        onNext = vm.nextEpisode()?.let { n -> { vm.open(n.id) } },
+                    if (mode == ReaderViewMode.WEBTOON) WebtoonReader(
+                        vm, vm.initialItem, seekTo, cfg, nav, { overlay = !overlay },
+                        onVisible = { f, l -> curIdx = f; lastIdx = l },
+                        onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
                     ) else PagedReader(
-                        vm, rtl = mode == 2, seekTo = seekTo, toggle = { overlay = !overlay },
-                        onPage = { p -> current = p; vm.onPage(p, p) },
-                        onSeekDone = { seekTo = null },
+                        vm, vertical = mode == ReaderViewMode.VERTICAL, rtl = mode == ReaderViewMode.RTL, startIndex = vm.initialItem,
+                        seekTo = seekTo, cfg = cfg, nav = nav, toggle = { overlay = !overlay },
+                        onIndex = { curIdx = it; lastIdx = it }, onSeekDone = { seekTo = null }, onLongPress = { actionPage = it },
                     )
                 }
 
-                // reached last page -> light haptic once
-                LaunchedEffect(current) { if (current == total - 1 && total > 1) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-                // prefetch next ~3 pages
-                LaunchedEffect(current) {
-                    val loader = SingletonImageLoader.get(context)
-                    for (i in 1..3) vm.pages.getOrNull(current + i)?.let {
-                        loader.enqueue(ImageRequest.Builder(context).data(it.imageUrl).size(2048).build())
-                    }
+                // page number overlay while bars are hidden
+                AnimatedVisibility(
+                    pageNum && !overlay, Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut(),
+                ) {
+                    Text(
+                        "${page + 1} / $total", color = Color.White, style = InkType.caption,
+                        modifier = Modifier.navigationBarsPadding().padding(bottom = 10.dp)
+                            .clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 5.dp),
+                    )
                 }
 
                 val slide = remember(reduced) { Motion.Sheet.specFor<IntOffset>(reduced) }
@@ -224,8 +207,9 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                                 BarIconButton(Icons.AutoMirrored.Outlined.ArrowBackIos, "Back", Color.White, onBack)
                                 Column(Modifier.weight(1f)) {
                                     Text(vm.entry?.title ?: "", color = Color.White, style = InkType.callout, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(ep.name, color = Color.White.copy(alpha = 0.6f), style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(curEp.name, color = Color.White.copy(alpha = 0.6f), style = InkType.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
+                                BarIconButton(Icons.Outlined.Tune, "Reader settings", Color.White) { showSettings = true }
                             }
                         }
                     }
@@ -238,17 +222,16 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                     Box(Modifier.fillMaxWidth()) {
                         Box(Modifier.matchParentSize().glass(hazeState, dark = true))
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            val rtl = mode == 2
                             var sliding by remember { mutableStateOf<Float?>(null) }
+                            val prev = vm.prevOf(curEp)
+                            val next = vm.nextOf(curEp)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                val prev = vm.prevEpisode()
-                                val next = vm.nextEpisode()
                                 BarIconButton(Icons.Outlined.SkipPrevious, "Previous chapter", if (prev != null) Color.White else Color.White.copy(0.3f)) { prev?.let { vm.open(it.id) } }
-                                CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                                CompositionLocalProvider(LocalLayoutDirection provides if (mode == ReaderViewMode.RTL) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                                     Slider(
-                                        value = sliding ?: current.toFloat(),
+                                        value = sliding ?: page.toFloat(),
                                         onValueChange = { sliding = it },
-                                        onValueChangeFinished = { sliding?.let { seekTo = it.toInt() }; sliding = null },
+                                        onValueChangeFinished = { sliding?.let { seekTo = chapterStart + it.toInt().coerceIn(0, total - 1) }; sliding = null },
                                         valueRange = 0f..(total - 1).coerceAtLeast(1).toFloat(),
                                         colors = SliderDefaults.colors(
                                             thumbColor = Color.White, activeTrackColor = ink.accent, inactiveTrackColor = Color.White.copy(alpha = 0.25f),
@@ -256,18 +239,16 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                                         modifier = Modifier.weight(1f),
                                     )
                                 }
-                                BarIconButton(Icons.Outlined.SkipNext, "Next chapter", if (next != null) Color.White else Color.White.copy(0.3f)) { next?.let { vm.open(it.id) } }
+                                BarIconButton(Icons.Outlined.SkipNext, "Next chapter", if (next != null) Color.White else Color.White.copy(0.3f)) {
+                                    next?.let { n ->
+                                        val at = items.indexOfFirst { it is RItem.Pg && it.ep.id == n.id && it.idx == 0 }
+                                        if (at >= 0) seekTo = at else vm.open(n.id)
+                                    }
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${(sliding?.toInt() ?: current) + 1} / $total", color = Color.White.copy(alpha = 0.8f), style = InkType.caption, modifier = Modifier.padding(start = 8.dp).weight(1f))
-                                Row(
-                                    Modifier.pressable { modeOverride = (mode + 1) % 3 }.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(if (mode == 0) Icons.Outlined.ViewAgenda else Icons.Outlined.AutoStories, null, tint = ink.accent, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(MODE_LABELS[mode], color = ink.accent, style = InkType.callout)
-                                }
+                                Text("${(sliding?.toInt() ?: page) + 1} / $total", color = Color.White.copy(alpha = 0.8f), style = InkType.caption, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                                Text(mode.label, color = ink.accent, style = InkType.callout, modifier = Modifier.pressable { showSettings = true }.padding(horizontal = 12.dp, vertical = 8.dp))
                             }
                             Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
                         }
@@ -275,97 +256,28 @@ fun ReaderScreen(sourceId: String, entryId: String, episodeId: String, onBack: (
                 }
             }
         }
-        if (vm.error != null && vm.pages.isNotEmpty()) { /* transient error ignored; progress still saved */ }
-    }
-}
-
-@Composable
-private fun PageImage(page: Page, modifier: Modifier, fit: ContentScale, minAspect: Float? = null) {
-    var attempt by remember { mutableIntStateOf(0) }
-    val context = LocalContext.current
-    key(attempt) {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context).data(page.imageUrl).size(2048).build(),
-            contentDescription = "Page ${page.index + 1}",
-            contentScale = fit,
-            modifier = modifier,
-            loading = {
-                Box(Modifier.fillMaxWidth().then(if (minAspect != null) Modifier.aspectRatio(minAspect) else Modifier.fillMaxHeight()).shimmer())
-            },
-            error = {
-                Box(
-                    Modifier.fillMaxWidth().then(if (minAspect != null) Modifier.aspectRatio(minAspect) else Modifier.fillMaxHeight())
-                        .clickable { attempt++ },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Failed to load page. Tap to retry.", color = Color.White.copy(0.7f), style = InkType.callout) }
-            },
-        )
-    }
-}
-
-@Composable
-private fun WebtoonReader(
-    vm: ReaderViewModel, current: Int, seekTo: Int?, toggle: () -> Unit,
-    onPage: (Int, Int) -> Unit, onSeekDone: () -> Unit, onNext: (() -> Unit)?,
-) {
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = vm.initialPage)
-    LaunchedEffect(list) {
-        snapshotFlow { list.firstVisibleItemIndex to (list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) }
-            .collect { (first, last) -> if (first < vm.pages.size) onPage(first, minOf(last, vm.pages.lastIndex)) }
-    }
-    LaunchedEffect(seekTo) { seekTo?.let { list.scrollToItem(it); onSeekDone() } }
-    LazyColumn(state = list, modifier = Modifier.fillMaxSize().zoomable(maxScale = 3f, doubleTapScale = 2f, onTap = { toggle() })) {
-        itemsIndexed(vm.pages, key = { _, p -> p.index }) { _, p ->
-            TiledImage(
-                url = p.imageUrl, contentDescription = "Page ${p.index + 1}",
-                placeholder = { Box(Modifier.fillMaxWidth().aspectRatio(0.7f).shimmer()) },
-                error = { retry ->
-                    Box(Modifier.fillMaxWidth().aspectRatio(0.7f).clickable { retry() }, contentAlignment = Alignment.Center) {
-                        Text("Failed to load page. Tap to retry.", color = Color.White.copy(0.7f), style = InkType.callout)
-                    }
-                },
-            )
-        }
-        item {
-            Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                if (onNext != null) FilledPill("Next chapter", onClick = onNext)
-                else Text("End of available chapters", color = Color.White.copy(0.6f), style = InkType.callout)
+        if (showSettings) ReaderSettingsSheet(vm, prefs) { showSettings = false }
+        actionPage?.let { pg ->
+            ModalBottomSheet(onDismissRequest = { actionPage = null }, containerColor = ink.bg) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                    Text("Page ${pg.idx + 1}", color = ink.label, style = InkType.title, modifier = Modifier.padding(bottom = 8.dp))
+                    val name = "${vm.entry?.title ?: "page"}_${pg.ep.name}_${pg.idx + 1}".replace(Regex("[^A-Za-z0-9._-]+"), "_")
+                    Text("Share", color = ink.accent, style = InkType.body, modifier = Modifier.fillMaxWidth().pressable {
+                        actionPage = null
+                        scope.launch {
+                            runCatching { context.startActivity(PageActions.share(context, pg.page.imageUrl, name)) }
+                                .onFailure { Toast.makeText(context, "Could not share", Toast.LENGTH_SHORT).show() }
+                        }
+                    }.padding(vertical = 12.dp))
+                    if (PageActions.canSave) Text("Save to Pictures", color = ink.accent, style = InkType.body, modifier = Modifier.fillMaxWidth().pressable {
+                        actionPage = null
+                        scope.launch {
+                            val ok = runCatching { PageActions.saveToPictures(context, pg.page.imageUrl, name) }.getOrNull() != null
+                            Toast.makeText(context, if (ok) "Saved to Pictures/Inkwell" else "Could not save image", Toast.LENGTH_SHORT).show()
+                        }
+                    }.padding(vertical = 12.dp))
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun PagedReader(
-    vm: ReaderViewModel, rtl: Boolean, seekTo: Int?, toggle: () -> Unit,
-    onPage: (Int) -> Unit, onSeekDone: () -> Unit,
-) {
-    val pager = rememberPagerState(initialPage = vm.initialPage) { vm.pages.size }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { onPage(it) } }
-    LaunchedEffect(seekTo) { seekTo?.let { pager.animateScrollToPage(it, animationSpec = Motion.Default.spec()); onSeekDone() } }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val w = constraints.maxWidth.toFloat()
-        HorizontalPager(
-            state = pager,
-            modifier = Modifier.fillMaxSize(),
-            reverseLayout = rtl,
-            beyondViewportPageCount = 1,
-            key = { vm.pages[it].index },
-            flingBehavior = PagerDefaults.flingBehavior(state = pager, snapAnimationSpec = Motion.Bouncy.spec()),
-        ) { i ->
-            PageImage(
-                vm.pages[i],
-                Modifier.fillMaxSize().zoomable(onTap = { off ->
-                    val frac = off.x / w
-                    when {
-                        frac < 0.25f -> scope.launch { pager.animateScrollToPage((pager.currentPage + if (rtl) 1 else -1).coerceIn(0, vm.pages.lastIndex), animationSpec = Motion.Snappy.spec()) }
-                        frac > 0.75f -> scope.launch { pager.animateScrollToPage((pager.currentPage + if (rtl) -1 else 1).coerceIn(0, vm.pages.lastIndex), animationSpec = Motion.Snappy.spec()) }
-                        else -> toggle()
-                    }
-                }),
-                ContentScale.Fit,
-            )
         }
     }
 }

@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -33,9 +34,9 @@ class NovelRestSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .build()
         val items = json(url).jsonObject["novels"]?.jsonArray?.mapNotNull { el ->
             val o = el.jsonObject
-            val slug = o["slug"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            Entry(id, slug, title, abs(o["coverImage"]?.jsonPrimitive?.content), ContentType.NOVEL)
+            val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            Entry(id, slug, title, abs(o["coverImage"]?.jsonPrimitive?.contentOrNull), ContentType.NOVEL)
         } ?: emptyList()
         return PagedResult(items, items.isNotEmpty())
     }
@@ -50,16 +51,16 @@ class NovelRestSource(client: OkHttpClient) : ScraperNovelSource(client) {
     override suspend fun details(entryId: String): EntryDetails {
         val slug = entryId.removePrefix("/novels/")
         val o = json("$apiBase/novels/$slug").jsonObject
-        val title = o["title"]?.jsonPrimitive?.content?.takeUnless { it.isEmpty() } ?: "Untitled"
-        val author = o["author"]?.jsonPrimitive?.content?.takeUnless { it.isNullOrEmpty() }
+        val title = o["title"]?.jsonPrimitive?.contentOrNull?.takeUnless { it.isEmpty() } ?: "Untitled"
+        val author = o["author"]?.jsonPrimitive?.contentOrNull?.takeUnless { it.isNullOrEmpty() }
         val genres = o["genres"]?.jsonArray?.mapNotNull { g ->
             when (g) {
                 is JsonPrimitive -> g.content.takeIf { it.isNotEmpty() }
-                is JsonObject -> g["name"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }
+                is JsonObject -> g["name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
                 else -> null
             }
         } ?: emptyList()
-        val status = when (o["status"]?.jsonPrimitive?.content) {
+        val status = when (o["status"]?.jsonPrimitive?.contentOrNull) {
             "COMPLETED" -> "Completed"
             "ONGOING" -> "Ongoing"
             "HIATUS" -> "On Hiatus"
@@ -67,20 +68,20 @@ class NovelRestSource(client: OkHttpClient) : ScraperNovelSource(client) {
         }
         val chapters = o["chapters"]?.jsonArray?.mapNotNull { el ->
             val c = el.jsonObject
-            val number = c["number"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val number = c["number"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
             Episode(
                 id = "$slug/$number", // slug/chapterNumber format
-                name = c["title"]?.jsonPrimitive?.content?.takeUnless { it.isNullOrEmpty() }
+                name = c["title"]?.jsonPrimitive?.contentOrNull?.takeUnless { it.isNullOrEmpty() }
                     ?: "Chapter $number",
                 number = number.toFloatOrNull(),
-                dateMillis = parseDate(c["createdAt"]?.jsonPrimitive?.content),
+                dateMillis = parseDate(c["createdAt"]?.jsonPrimitive?.contentOrNull),
             )
         } ?: emptyList()
         cachedChapters[slug] = chapters
 
         return EntryDetails(
-            entry = Entry(id, slug, title, abs(o["coverImage"]?.jsonPrimitive?.content), ContentType.NOVEL),
-            description = o["description"]?.jsonPrimitive?.content?.takeUnless { it.isNullOrEmpty() },
+            entry = Entry(id, slug, title, abs(o["coverImage"]?.jsonPrimitive?.contentOrNull), ContentType.NOVEL),
+            description = o["description"]?.jsonPrimitive?.contentOrNull?.takeUnless { it.isNullOrEmpty() },
             authors = listOfNotNull(author),
             genres = genres,
             status = status,
@@ -100,7 +101,7 @@ class NovelRestSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val number = parts.lastOrNull() ?: return emptyList()
         val slug = parts.dropLast(1).joinToString("/")
         val o = json("$apiBase/novels/$slug/chapters/$number").jsonObject
-        val html = o["contentHtml"]?.jsonPrimitive?.content ?: return emptyList()
+        val html = o["contentHtml"]?.jsonPrimitive?.contentOrNull ?: return emptyList()
         if (html.isBlank()) return emptyList()
         return paragraphsOf(Jsoup.parse(html))
     }

@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,11 +47,11 @@ class ProcrastranslationSource(client: OkHttpClient) : ScraperNovelSource(client
 
     private fun toPage(o: JsonObject) = WpPage(
         o["id"]!!.jsonPrimitive.content.toInt(),
-        o["slug"]?.jsonPrimitive?.content.orEmpty(),
-        o["link"]?.jsonPrimitive?.content.orEmpty(),
-        o["date"]?.jsonPrimitive?.content.orEmpty(),
-        o["parent"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-        decode(o["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()),
+        o["slug"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        o["link"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        o["date"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        o["parent"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+        decode(o["title"]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()),
     )
 
     private suspend fun allPages(): List<WpPage> {
@@ -93,7 +94,7 @@ class ProcrastranslationSource(client: OkHttpClient) : ScraperNovelSource(client
             Episode(toPath(p.link), p.title, (i + 1).toFloat(), parseDate(p.date, "yyyy-MM-dd'T'HH:mm:ss"))
         }
         val html = fetchList("/pages?include=${novel.id}&_fields=id,content").firstOrNull()
-            ?.get("content")?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()
+            ?.get("content")?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()
         val d = Jsoup.parse("<div id=\"novel\">$html</div>")
         val author = d.select("p").map { norm(it.text()) }.firstOrNull { Regex("^Author\\s*:", RegexOption.IGNORE_CASE).containsMatchIn(it) }
             ?.replace(Regex("^Author\\s*:\\s*", RegexOption.IGNORE_CASE), "")
@@ -129,8 +130,8 @@ class ProcrastranslationSource(client: OkHttpClient) : ScraperNovelSource(client
     override suspend fun chapterText(episodeId: String): List<String> {
         val path = toPath(episodeId)
         val cands = fetchList("/pages?slug=${lastSegment(path)}&_fields=id,slug,link,title,date,parent,content")
-        val page = cands.firstOrNull { toPath(it["link"]?.jsonPrimitive?.content.orEmpty()) == path } ?: return emptyList()
-        val html = page["content"]?.jsonObject?.get("rendered")?.jsonPrimitive?.content.orEmpty()
+        val page = cands.firstOrNull { toPath(it["link"]?.jsonPrimitive?.contentOrNull.orEmpty()) == path } ?: return emptyList()
+        val html = page["content"]?.jsonObject?.get("rendered")?.jsonPrimitive?.contentOrNull.orEmpty()
         val d = Jsoup.parse("<div id=\"chapter\">$html</div>")
         val root = d.selectFirst("#chapter")!!
         root.select("script, style, .sharedaddy, .jp-relatedposts").remove()

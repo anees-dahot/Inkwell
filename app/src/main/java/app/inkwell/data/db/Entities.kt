@@ -21,6 +21,8 @@ data class LibraryItem(
     val expectedNext: Long? = null,
     /** Bell toggle: notify on new chapters + on the expected release day. */
     @ColumnInfo(defaultValue = "0") val remind: Boolean = false,
+    /** [LibraryCategory.id]; 0 = uncategorized. */
+    @ColumnInfo(defaultValue = "0") val categoryId: Long = 0,
 )
 
 /** Per chapter/episode progress. */
@@ -95,4 +97,39 @@ data class UpdateRow(
     val coverUrl: String?,
     val type: String,
     val isRead: Boolean,
+)
+
+/** User-defined library category. */
+@Entity
+data class LibraryCategory(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val sortOrder: Int,
+)
+
+object DlStatus {
+    const val QUEUED = "QUEUED"
+    const val DOWNLOADING = "DOWNLOADING"
+    const val DONE = "DONE"
+    const val PAUSED = "PAUSED"
+    const val ERROR = "ERROR"
+}
+
+/** A chapter in the offline download queue / the downloaded set. */
+@Entity(primaryKeys = ["sourceId", "entryId", "episodeId"])
+data class DownloadItem(
+    val sourceId: String,
+    val entryId: String,
+    val episodeId: String,
+    val entryTitle: String,
+    val coverUrl: String?,
+    val type: String,
+    val episodeName: String,
+    val number: Float?,
+    val status: String,
+    val progress: Int,
+    val total: Int,
+    val bytes: Long,
+    val error: String?,
+    val createdAt: Long,
 )

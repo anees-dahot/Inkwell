@@ -158,7 +158,7 @@ class FuckNovelPiaSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         var genres = parsed?.get("genre")?.let { el ->
             when (el) {
-                is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
                     .filter { it.isNotBlank() }.joinToString(",")
                 is JsonPrimitive -> el.contentOrNull.orEmpty()
                 else -> ""
@@ -222,5 +222,5 @@ class FuckNovelPiaSource(client: OkHttpClient) : ScraperNovelSource(client) {
     }
 
     private fun JsonObject.str(key: String): String? =
-        (this[key] as? JsonPrimitive)?.contentOrNull
+        (this[key] as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
 }

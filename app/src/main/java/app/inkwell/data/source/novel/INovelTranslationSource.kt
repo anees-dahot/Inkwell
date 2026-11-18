@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URLEncoder
 import kotlinx.serialization.json.JsonArray
@@ -29,7 +30,7 @@ class INovelTranslationSource(client: OkHttpClient) : ScraperNovelSource(client)
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private fun str(e: JsonElement?): String? =
-        runCatching { e?.jsonPrimitive?.content }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
+        runCatching { e?.jsonPrimitive?.contentOrNull }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
 
     private fun docsToEntries(data: JsonElement): PagedResult<Entry> {
         val o = data.jsonObject
@@ -39,7 +40,7 @@ class INovelTranslationSource(client: OkHttpClient) : ScraperNovelSource(client)
             val cover = str(d["cover"]?.takeIf { it !is JsonNull }?.jsonObject?.get("url"))?.let { baseUrl + it }
             Entry(id, nid, str(d["title"]).orEmpty(), cover, ContentType.NOVEL)
         } ?: emptyList()
-        val hasNext = o["hasNextPage"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: items.isNotEmpty()
+        val hasNext = o["hasNextPage"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: items.isNotEmpty()
         return PagedResult(items, hasNext)
     }
 
@@ -99,7 +100,7 @@ class INovelTranslationSource(client: OkHttpClient) : ScraperNovelSource(client)
                     ),
                 )
             }
-            if (o["hasNextPage"]?.jsonPrimitive?.content != "true") break
+            if (o["hasNextPage"]?.jsonPrimitive?.contentOrNull != "true") break
             page++
         }
         return out.sortedBy { it.number ?: 0f }

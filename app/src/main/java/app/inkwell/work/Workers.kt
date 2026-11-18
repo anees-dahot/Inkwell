@@ -10,6 +10,7 @@ class LibraryUpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWor
         val repo = (applicationContext as InkwellApp).container.repo
         val fresh = repo.refreshLibrary()
         Notifier.newChapters(applicationContext, fresh)
+        if ((applicationContext as InkwellApp).container.settings.autoDownload.value) runCatching { repo.autoDownload(fresh) }
         runCatching { Scheduler.syncExpected(applicationContext) }
         return Result.success()
     }

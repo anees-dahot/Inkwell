@@ -19,7 +19,7 @@ class LnMTLSource(client: OkHttpClient) : ScraperNovelSource(client) {
     override val baseUrl = "https://lnmtl.com"
     override val lang = "en"
 
-    private fun str(e: Any?): String? = (e as? JsonPrimitive)?.contentOrNull
+    private fun str(e: Any?): String? = (e as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
 
     private suspend fun listing(page: Int, order: String): PagedResult<Entry> {
         val d = doc("$baseUrl/novel?orderBy=$order&order=desc&filter=all&page=$page")

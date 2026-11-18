@@ -27,7 +27,7 @@ class LNCrawlerSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private data class Src(val slug: String, val language: String, val available: Int)
 
-    private fun str(e: JsonElement?): String? = (e as? JsonPrimitive)?.contentOrNull
+    private fun str(e: JsonElement?): String? = (e as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
 
     private suspend fun list(page: Int, query: String?, sort: String): PagedResult<Entry> {
         val url = "$api/novels/search/".toHttpUrl().newBuilder()

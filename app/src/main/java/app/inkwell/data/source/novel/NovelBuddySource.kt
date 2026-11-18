@@ -22,7 +22,7 @@ class NovelBuddySource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     private val api = "https://api.novelbuddy.me/"
 
-    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.contentOrNull
+    private fun s(e: JsonElement?): String? = (e as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull
     private fun clamp(q: String) = if (q.length <= 50) q else q.take(50).let { if (it.last().isHighSurrogate()) it.dropLast(1) else it }
     private fun rel(u: String) = u.trimStart('/')
 

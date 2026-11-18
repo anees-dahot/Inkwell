@@ -53,7 +53,7 @@ private fun ActionRow(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}) {
+fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDownloads: () -> Unit = {}) {
     val c = LocalContainer.current
     val s = c.settings
     val theme by s.theme.collectAsStateWithLifecycle()
@@ -69,6 +69,8 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}) {
     val hours by s.updateHours.collectAsStateWithLifecycle()
     val wifiOnly by s.updateWifiOnly.collectAsStateWithLifecycle()
     val charging by s.updateCharging.collectAsStateWithLifecycle()
+    val dlWifi by s.downloadWifiOnly.collectAsStateWithLifecycle()
+    val dlAuto by s.autoDownload.collectAsStateWithLifecycle()
     val askNotif = rememberNotificationPermission()
     var message by remember { mutableStateOf<String?>(null) }
     val intervals = listOf(0, 6, 12, 24)
@@ -96,7 +98,7 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}) {
                 val r = c.repo.importBackup(text)
                 app.inkwell.work.Scheduler.syncAll(ctx)
                 scope.launch { c.repo.refreshLibrary() }
-                "Restored ${r.library} titles, ${r.progress} progress entries, ${r.history} history items, ${r.reminders} reminders."
+                "Restored ${r.library} titles, ${r.categories} categories, ${r.progress} progress entries, ${r.history} history items, ${r.reminders} reminders."
             }.getOrElse { "Import failed: ${it.message}" }
         }
     }
@@ -134,6 +136,19 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}) {
                     ActionRow("Update library now") { askNotif(); app.inkwell.work.Scheduler.updateNow(ctx); message = "Updating library…" }
                     Hairline()
                     ActionRow("Upcoming releases & reminders", onClick = onOpenUpcoming)
+                }
+            }
+            item { SectionHeader("Downloads") }
+            item {
+                GroupedCard {
+                    ActionRow("Downloads & queue", onClick = onOpenDownloads)
+                    Hairline()
+                    ToggleRow("Download only on Wi-Fi", dlWifi) {
+                        s.setDownloadWifiOnly(it)
+                        scope.launch { app.inkwell.work.Downloads.restartIfPending(ctx) }
+                    }
+                    Hairline()
+                    ToggleRow("Auto-download new chapters", dlAuto) { s.setAutoDownload(it); if (it) askNotif() }
                 }
             }
             item { SectionHeader("Backup") }

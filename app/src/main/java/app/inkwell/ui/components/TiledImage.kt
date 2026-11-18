@@ -85,7 +85,16 @@ private val client by lazy {
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
-        .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "Inkwell/0.1 (Android)").build()) }
+        .addInterceptor { chain ->
+            val req = chain.request()
+            val b = req.newBuilder().header("User-Agent", "Inkwell/0.1 (Android)")
+            if (req.header("Referer") == null) {
+                app.inkwell.data.source.ImageReferers.forHost(req.url.host)?.let {
+                    b.header("Referer", it).header("User-Agent", app.inkwell.data.source.MangaDexSource.UA)
+                }
+            }
+            chain.proceed(b.build())
+        }
         .build()
 }
 
@@ -120,6 +129,9 @@ private suspend fun loadTiles(context: Context, url: String, targetWidth: Int): 
     }
 
 private fun download(context: Context, url: String): File {
+    // downloaded chapters are served as local files
+    if (url.startsWith("file:")) return File(java.net.URI(url))
+    if (url.startsWith("/")) return File(url)
     val dir = File(context.cacheDir, "pages").apply { mkdirs() }
     val name = MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
     val file = File(dir, name)
@@ -143,4 +155,19 @@ private fun trimCache(dir: File, maxBytes: Long = 200L shl 20) {
         total -= f.length()
         f.delete()
     }
+}
+
+/** Downloads (or reuses the disk cache of) a page image and returns the file. */
+suspend fun fetchPageFile(context: Context, url: String): File = withContext(Dispatchers.IO) { download(context, url) }
+
+/** Warm the page cache used by [TiledImage]; failures are ignored. */
+suspend fun prefetchPage(context: Context, url: String) { runCatching { fetchPageFile(context, url) } }
+
+/** Width / height of the image (downloads into the page cache), or null on failure. */
+suspend fun probeAspect(context: Context, url: String): Float? = withContext(Dispatchers.IO) {
+    runCatching {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(download(context, url).path, o)
+        if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else null
+    }.getOrNull()
 }

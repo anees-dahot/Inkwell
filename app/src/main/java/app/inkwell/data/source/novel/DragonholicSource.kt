@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -81,14 +82,14 @@ class DragonholicSource(client: OkHttpClient) : ScraperNovelSource(client) {
         val results = runCatching { root.jsonObject["results"]?.jsonArray }.getOrNull().orEmpty()
         val items = results.mapNotNull { el ->
             val o = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
-            val title = o["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val m = Regex("/series/([^/]+)/?").find(o["url"]?.jsonPrimitive?.content ?: "")
+            val title = o["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val m = Regex("/series/([^/]+)/?").find(o["url"]?.jsonPrimitive?.contentOrNull ?: "")
                 ?: return@mapNotNull null
             Entry(
                 id,
                 m.groupValues[1],
                 decodeEntities(title),
-                abs(o["thumbnail"]?.jsonPrimitive?.content),
+                abs(o["thumbnail"]?.jsonPrimitive?.contentOrNull),
                 ContentType.NOVEL,
             )
         }
@@ -137,11 +138,11 @@ class DragonholicSource(client: OkHttpClient) : ScraperNovelSource(client) {
             }.getOrNull().orEmpty()
             list.forEachIndexed { idx, el ->
                 val o = runCatching { el.jsonObject }.getOrNull() ?: return@forEachIndexed
-                val slug = o["slug"]?.jsonPrimitive?.content ?: return@forEachIndexed
-                val order = o["chapter_order"]?.jsonPrimitive?.content?.toFloatOrNull()
-                val heading = o["heading"]?.jsonPrimitive?.content?.takeUnless { it.isBlank() }
-                    ?: o["name"]?.jsonPrimitive?.content
-                val subtitle = o["subtitle"]?.jsonPrimitive?.content
+                val slug = o["slug"]?.jsonPrimitive?.contentOrNull ?: return@forEachIndexed
+                val order = o["chapter_order"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+                val heading = o["heading"]?.jsonPrimitive?.contentOrNull?.takeUnless { it.isBlank() }
+                    ?: o["name"]?.jsonPrimitive?.contentOrNull
+                val subtitle = o["subtitle"]?.jsonPrimitive?.contentOrNull
                 var epName = listOfNotNull(
                     heading?.takeIf { it.isNotBlank() },
                     subtitle?.takeIf { it.isNotBlank() },
@@ -153,7 +154,7 @@ class DragonholicSource(client: OkHttpClient) : ScraperNovelSource(client) {
                         id = "$novelPath/$slug",
                         name = epName,
                         number = order?.takeIf { it > 0 } ?: (idx + 1).toFloat(),
-                        dateMillis = parseDate(o["created_at"]?.jsonPrimitive?.content, "yyyy-MM-dd'T'HH:mm:ss"),
+                        dateMillis = parseDate(o["created_at"]?.jsonPrimitive?.contentOrNull, "yyyy-MM-dd'T'HH:mm:ss"),
                     )
                 )
             }

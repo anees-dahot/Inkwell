@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -217,12 +218,12 @@ class MiumiuSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
         val items = mutableListOf<Item>()
         for (post in fetchPosts()) {
-            val title = clean(Jsoup.parse(post["title"]?.jsonPrimitive?.content ?: "").text())
+            val title = clean(Jsoup.parse(post["title"]?.jsonPrimitive?.contentOrNull ?: "").text())
             if (!chapterTitle.containsMatchIn(title) || novelOf(post, title) != slug) continue
             items += Item(
                 name = chapterName(title),
-                path = toChapterPath(post["URL"]?.jsonPrimitive?.content ?: "").trimStart('/'),
-                date = post["date"]?.jsonPrimitive?.content ?: "",
+                path = toChapterPath(post["URL"]?.jsonPrimitive?.contentOrNull ?: "").trimStart('/'),
+                date = post["date"]?.jsonPrimitive?.contentOrNull ?: "",
                 postId = post["ID"]?.jsonPrimitive?.longOrNull ?: 0L,
                 order = chapterOrder(title),
             )

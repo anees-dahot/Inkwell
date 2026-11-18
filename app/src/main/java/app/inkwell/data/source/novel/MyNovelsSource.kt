@@ -85,7 +85,7 @@ class MyNovelsSource(client: OkHttpClient) : ScraperNovelSource(client) {
                 .build()
             val html = runCatching {
                 json.parseToJsonElement(client.newCall(req).bodyString()).jsonObject["html"]
-                    ?.let { (it as? JsonPrimitive)?.contentOrNull }
+                    ?.let { (it as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull }
             }.getOrNull() ?: continue
             val chunk = Jsoup.parse(html).select("a").mapNotNull { a ->
                 val title = a.selectFirst(".title")?.text()?.trim().orEmpty()
@@ -119,8 +119,8 @@ class MyNovelsSource(client: OkHttpClient) : ScraperNovelSource(client) {
             .header("X-Requested-With", "XMLHttpRequest")
             .build()
         val o = json.parseToJsonElement(client.newCall(req).bodyString()).jsonObject
-        val cls = (o["class"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-        val content = (o["content"] as? JsonPrimitive)?.contentOrNull ?: return emptyList()
+        val cls = (o["class"] as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull.orEmpty()
+        val content = (o["content"] as? JsonPrimitive)?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.contentOrNull ?: return emptyList()
         val d = Jsoup.parse(content)
         d.select("script, .advertisment").remove()
         val root = if (cls.isNotEmpty()) d.selectFirst(".$cls") ?: d.body() else d.body()

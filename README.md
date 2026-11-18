@@ -4,7 +4,7 @@ Android app for reading **manga, manhwa and web novels** and watching **donghua*
 
 ## Features
 
-- **90+ built-in sources** — MangaDex and MangaRawClub for manga, 89 web-novel sources (ported from LNReader plugins), and YouTube channels for donghua
+- **90 built-in sources** — MangaDex and MangaRawClub for manga, 89 web-novel sources (ported from LNReader plugins), and YouTube channels for donghua
 - **Searchable source picker** with recently used sources
 - **Library** with unread badges and a "Continue reading" card
 - **Background library updates** (every 6/12/24 h, Wi-Fi / charging only) with new-chapter notifications
@@ -12,7 +12,12 @@ Android app for reading **manga, manhwa and web novels** and watching **donghua*
 - **Reminders** — per-title bell for new chapters plus custom weekly reading reminders
 - **Cloudflare support** — sites behind a Cloudflare check can be unlocked once in the built-in WebView
 - **Backup & restore** — library, progress, history and reminders as a JSON file
-- Manga reader, novel reader, history, light/dark theme
+- **Offline downloads** — queue chapters (manga pages or novel text) and read without internet
+- **Library categories**, sort, search, grid/list views and multi-select actions
+- **Global search** across every source at once
+- **Novel reader** — fonts, size, spacing, margins, Light/Sepia/Dark/Black themes, text-to-speech read-aloud, chapter list, continuous scroll, resume position
+- **Manga reader** — Paged (LTR/RTL), Vertical and Webtoon modes per title, page slider, seamless next chapter, brightness, save/share pages
+- History with search, light/dark theme
 
 ## Install
 

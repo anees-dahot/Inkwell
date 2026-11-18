@@ -77,6 +77,7 @@ fun GlassTopBar(
     modifier: Modifier = Modifier,
     leading: @Composable () -> Unit = {},
     trailing: @Composable RowScope.() -> Unit = {},
+    titleInset: androidx.compose.ui.unit.Dp = 56.dp,
 ) {
     val reduced = LocalReducedMotion.current
     val a by animateFloatAsState(if (collapsed) 1f else 0f, Motion.Default.specFor(reduced), label = "bar")
@@ -95,7 +96,7 @@ fun GlassTopBar(
                 Text(
                     title, style = InkType.headline, color = ink.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 56.dp).alpha(a),
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = titleInset).alpha(a),
                 )
                 Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = trailing)
             }

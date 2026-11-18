@@ -32,5 +32,5 @@ class AppContainer(context: Context) {
         ) + app.inkwell.data.source.novel.novelSources(httpClient) +
             app.inkwell.data.source.manga.mangaSources(httpClient)
     )
-    val repo = Repository(registry, db, settings)
+    val repo = Repository(registry, db, settings, context.applicationContext, httpClient)
 }

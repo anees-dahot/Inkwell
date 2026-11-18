@@ -1,6 +1,7 @@
 package app.inkwell.data.source.novel
 
 import app.inkwell.data.model.*
+import kotlinx.serialization.json.contentOrNull
 import app.inkwell.data.source.*
 import java.net.URLEncoder
 import kotlinx.serialization.json.JsonElement
@@ -25,7 +26,7 @@ class AtsumaruSource(client: OkHttpClient) : ScraperNovelSource(client) {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     private fun str(e: JsonElement?): String? =
-        runCatching { e?.jsonPrimitive?.content }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
+        runCatching { e?.jsonPrimitive?.contentOrNull }.getOrNull()?.takeIf { it.isNotEmpty() && it != "null" }
 
     private suspend fun cards(query: String, sort: String, page: Int): PagedResult<Entry> {
         val url = "$baseUrl/collections/manga/documents/search?q=${enc(query)}&query_by=${enc(queryBy)}" +
