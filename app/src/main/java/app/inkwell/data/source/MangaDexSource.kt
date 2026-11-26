@@ -13,7 +13,7 @@ import java.time.OffsetDateTime
 class MangaDexSource(
     private val client: OkHttpClient,
     private val langProvider: () -> String,
-) : MangaSource {
+) : MangaSource, TagBrowsable {
     override val id = "mangadex"
     override val name = "MangaDex"
     override val type = ContentType.MANGA
@@ -57,6 +57,25 @@ class MangaDexSource(
     }
 
     override suspend fun popular(page: Int) = list(listUrl("order[followedCount]", null, page), page)
+
+    @Volatile private var tagIds: Map<String, String>? = null
+    private suspend fun tagId(name: String): String? {
+        val map = tagIds ?: get("$base/manga/tag".toHttpUrl()).let { root ->
+            root["data"]?.jsonArray?.mapNotNull { t ->
+                val o = t.jsonObject
+                val id = o["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val n = o["attributes"]?.jsonObject?.get("name")?.jsonObject?.get("en")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                n.lowercase() to id
+            }?.toMap().orEmpty()
+        }.also { tagIds = it }
+        return map[name.trim().lowercase()]
+    }
+
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val id = tagId(tag) ?: return PagedResult(emptyList(), false)
+        val url = listUrl("order[followedCount]", null, page).newBuilder().addQueryParameter("includedTags[]", id).build()
+        return list(url, page)
+    }
     override suspend fun latest(page: Int) = list(listUrl("order[latestUploadedChapter]", null, page), page)
     override suspend fun search(query: String, page: Int) = list(listUrl(null, query, page), page)
 
@@ -82,6 +101,7 @@ class MangaDexSource(
             title = pickTitle(attrs["title"]?.jsonObject),
             coverUrl = coverOf(obj, size),
             type = ContentType.MANGA,
+            latest = attrs["lastChapter"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
         )
     }
 

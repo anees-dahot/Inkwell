@@ -5,13 +5,15 @@ import app.inkwell.data.model.EntryDetails
 import app.inkwell.data.model.Episode
 import app.inkwell.data.model.Page
 import app.inkwell.data.model.PagedResult
+import app.inkwell.data.model.chapterNumber
 import app.inkwell.data.source.ScraperMangaSource
 import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 /** Port of Keiyoushi's MangaFreak extension (ww3.mangafreak.me). */
-class MangaFreakSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class MangaFreakSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://ww3.mangafreak.me"
     override val id = "mangafreak"
     override val name = "MangaFreak"
@@ -22,22 +24,39 @@ class MangaFreakSource(client: OkHttpClient) : ScraperMangaSource(client) {
     private fun cover(slug: String) = ref("https://images.mangafreak.me/manga_images/${slug.lowercase()}.jpg")
     private fun slugOf(href: String) = href.substringAfterLast("/Manga/")
 
+    private fun published(el: Element) =
+        chapterNumber(el.selectFirst("div:matchesOwn(^\\d+ Published)")?.text()?.substringBefore(' '))
+
     private fun hasNext(d: Document) = d.selectFirst(".pagination a.next_p") != null
 
     override suspend fun popular(page: Int): PagedResult<Entry> {
         val d = doc("$baseUrl/Genre/All/$page")
         val items = d.select("div.ranking_item").mapNotNull { el ->
             val a = el.selectFirst("a[href^=/Manga/]") ?: return@mapNotNull null
-            Entry(id, a.attr("href"), a.text().trim(), ref(el.selectFirst("img")?.attr("src")), type)
+            Entry(id, a.attr("href"), a.text().trim(), ref(el.selectFirst("img")?.attr("src")), type, published(el))
         }
         return PagedResult(items, hasNext(d))
+    }
+
+    /** /Genre/Slice_Of_Life/1 (site matches genre names case-insensitively). */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val g = tag.trim().replace(Regex("[^A-Za-z0-9]+"), "_").trim('_').ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try { doc("$baseUrl/Genre/$g/$page") } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        val items = d.select("div.ranking_item").mapNotNull { el ->
+            val a = el.selectFirst("a[href^=/Manga/]") ?: return@mapNotNull null
+            Entry(id, a.attr("href"), a.text().trim(), ref(el.selectFirst("img")?.attr("src")), type, published(el))
+        }
+        return PagedResult(items, items.isNotEmpty() && hasNext(d))
     }
 
     override suspend fun latest(page: Int): PagedResult<Entry> {
         val d = doc("$baseUrl/Latest_Releases/$page")
         val items = d.select("div.latest_releases_item").mapNotNull { el ->
             val a = el.selectFirst("a[href^=/Manga/]") ?: return@mapNotNull null
-            Entry(id, a.attr("href"), a.text().trim(), cover(slugOf(a.attr("href"))), type)
+            Entry(id, a.attr("href"), a.text().trim(), cover(slugOf(a.attr("href"))), type,
+                chapterNumber(el.selectFirst("a[href^=/Read]")?.text()?.substringAfterLast(' ')))
         }
         return PagedResult(items, hasNext(d))
     }

@@ -15,6 +15,8 @@ class AppContainer(context: Context) {
     init {
         ScraperSource.globalUserAgent = Cloudflare.webViewUserAgent(context)
         SourceHealth.init(context)
+        ImageReferers.init(context)
+        Net.init(context)
     }
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -24,9 +26,13 @@ class AppContainer(context: Context) {
         .addInterceptor(CloudflareInterceptor(context))
         .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
         .addInterceptor(RateLimitInterceptor("api.mangadex.org", 5))
+        .addNetworkInterceptor(NetMeter)
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** Shared by Coil, the webtoon tiler and chapter downloads. */
+    val imageClient: OkHttpClient = Net.imageClient(httpClient.connectionPool, httpClient.cookieJar)
 
     val updater = app.inkwell.data.AppUpdater(context.applicationContext, httpClient)
 
@@ -36,6 +42,6 @@ class AppContainer(context: Context) {
         ) + app.inkwell.data.source.novel.novelSources(httpClient) +
             app.inkwell.data.source.manga.mangaSources(httpClient)
     )
-    val repo = Repository(registry, db, settings, context.applicationContext, httpClient)
+    val repo = Repository(registry, db, settings, context.applicationContext, httpClient, imageClient)
     val tracker = app.inkwell.data.ReadingTracker(db, settings, context.applicationContext)
 }

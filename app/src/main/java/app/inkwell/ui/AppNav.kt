@@ -17,6 +17,7 @@ import app.inkwell.ui.components.LocalSharedScope
 import app.inkwell.ui.motion.LocalReducedMotion
 import app.inkwell.ui.motion.Motion
 import app.inkwell.ui.screens.DetailsScreen
+import app.inkwell.ui.screens.ListingScreen
 import app.inkwell.ui.screens.DownloadsScreen
 import app.inkwell.ui.screens.NovelReaderScreen
 import app.inkwell.ui.screens.ReaderScreen
@@ -38,6 +39,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ReaderRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class NovelRoute(val sourceId: String, val entryId: String, val episodeId: String)
 @Serializable data class WebViewRoute(val url: String)
+@Serializable data class ListingRoute(val type: String, val sourceId: String? = null, val tag: String? = null)
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -107,6 +109,24 @@ fun AppNav() {
                         onBack = { nav.popBackStack() },
                         onOpenEpisode = { entry, ep -> openEpisode(entry.sourceId, entry.id, ep.id) },
                         onOpenEntry = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
+                        onOpenTag = { tag ->
+                            val type = container.registry.find(r.sourceId)?.type ?: ContentType.MANGA
+                            nav.navigate(ListingRoute(type.name, r.sourceId, tag))
+                        },
+                        onOpenSource = { id ->
+                            val type = container.registry.find(id)?.type ?: ContentType.MANGA
+                            nav.navigate(ListingRoute(type.name, id, null))
+                        },
+                    )
+                }
+            }
+            composable<ListingRoute> { e ->
+                val r = e.toRoute<ListingRoute>()
+                CompositionLocalProvider(LocalSharedScope provides this@SharedTransitionLayout, LocalAnimScope provides this) {
+                    ListingScreen(
+                        runCatching { ContentType.valueOf(r.type) }.getOrDefault(ContentType.MANGA), r.sourceId, r.tag,
+                        onBack = { nav.popBackStack() },
+                        onOpen = { nav.navigate(DetailsRoute(it.sourceId, it.id, it.title, it.coverUrl)) },
                     )
                 }
             }

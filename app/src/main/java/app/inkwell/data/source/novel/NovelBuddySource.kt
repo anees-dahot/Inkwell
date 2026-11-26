@@ -36,7 +36,9 @@ class NovelBuddySource(client: OkHttpClient) : ScraperNovelSource(client) {
             }.build()
         val items = json(url).jsonObject["data"]?.jsonObject?.get("items")?.jsonArray?.mapNotNull {
             val o = it as? JsonObject ?: return@mapNotNull null
-            Entry(id, rel(s(o["url"]) ?: return@mapNotNull null), s(o["name"]).orEmpty(), s(o["cover"]), ContentType.NOVEL)
+            Entry(id, rel(s(o["url"]) ?: return@mapNotNull null), s(o["name"]).orEmpty(), s(o["cover"]), ContentType.NOVEL,
+                (o["latest_chapters"] as? JsonArray)?.mapNotNull { c -> (c as? JsonObject)?.get("number")?.let { n -> s(n)?.toFloatOrNull() } }?.maxOrNull()
+                    ?: ((o["stats"] as? JsonObject)?.get("chapters_count")?.let { n -> s(n)?.toFloatOrNull() }))
         } ?: emptyList()
         return PagedResult(items, items.size >= 24)
     }

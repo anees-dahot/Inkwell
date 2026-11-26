@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** Port of Mihon's Manga18 multisrc theme (manga18.club). */
-class Manga18ClubSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class Manga18ClubSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://manga18.club"
     override val id = "manga18club"
     override val name = "Manga18.Club"
@@ -39,6 +39,14 @@ class Manga18ClubSource(client: OkHttpClient) : ScraperMangaSource(client) {
         url.toHttpUrl().encodedPath
 
     override suspend fun popular(page: Int) = parseList(doc("$baseUrl/list-manga/$page?order_by=views"))
+    /** Unverified (host unreachable while testing): genre archive /manga-list/<slug>/<page>. */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try { doc("$baseUrl/manga-list/$slug/$page") } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        return parseList(d)
+    }
     override suspend fun latest(page: Int) = parseList(doc("$baseUrl/list-manga/$page"))
 
     override suspend fun search(query: String, page: Int): PagedResult<Entry> {

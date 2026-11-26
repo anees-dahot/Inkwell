@@ -5,6 +5,7 @@ import app.inkwell.data.model.EntryDetails
 import app.inkwell.data.model.Episode
 import app.inkwell.data.model.Page
 import app.inkwell.data.model.PagedResult
+import app.inkwell.data.model.chapterNumber
 import app.inkwell.data.source.ScraperMangaSource
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -17,7 +18,7 @@ import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 
 /** www.katamanga.com (the former mangakakalot.gg; Next.js, server-rendered lists + /api chapters). */
-class KatamangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class KatamangaSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://www.katamanga.com"
     override val id = "katamanga"
     override val name = "Katamanga"
@@ -29,12 +30,21 @@ class KatamangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
         val items = d.select("div.group").mapNotNull { el ->
             val a = el.selectFirst("h3 a[href^=/manga/]") ?: return@mapNotNull null
             Entry(id, a.attr("href"), a.attr("title").ifEmpty { a.text() },
-                ref(el.selectFirst("img")?.attr("src")?.ifEmpty { null }), type)
+                ref(el.selectFirst("img")?.attr("src")?.ifEmpty { null }), type,
+                chapterNumber(el.selectFirst("span:matchesOwn(^Ch\\.? ?\\d)")?.text()))
         }.distinctBy { it.id }
         return PagedResult(items, d.selectFirst("a[aria-label=Next page]") != null)
     }
 
     override suspend fun popular(page: Int) = listing(doc("$baseUrl/manga-list/hot-manga?page=$page"))
+
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try { doc("$baseUrl/genre/$slug?page=$page") } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true || e.message?.contains("403") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        return listing(d)
+    }
 
     override suspend fun latest(page: Int) = listing(doc("$baseUrl/manga-list/latest-manga?page=$page"))
 

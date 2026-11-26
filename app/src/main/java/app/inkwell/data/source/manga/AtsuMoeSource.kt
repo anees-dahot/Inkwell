@@ -18,7 +18,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
 /** atsu.moe: JSON API (Typesense search for browse, /api/manga + /api/read for the rest). */
-class AtsuMoeSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class AtsuMoeSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://atsu.moe"
     override val id = "atsumoe"
     override val name = "Atsu"
@@ -36,7 +36,7 @@ class AtsuMoeSource(client: OkHttpClient) : ScraperMangaSource(client) {
     private fun poster(p: String?) = staticUrl(p)?.replace(Regex("""\.avif$"""), ".webp")
     private fun mangaId(entryId: String) = entryId.trimEnd('/').substringAfterLast('/')
 
-    private suspend fun typesense(q: String, page: Int, sort: String?): PagedResult<Entry> {
+    private suspend fun typesense(q: String, page: Int, sort: String?, tag: String? = null): PagedResult<Entry> {
         val b = "$baseUrl/collections/manga/documents/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", q)
             .addQueryParameter("query_by", "title,englishTitle,otherNames,authors,acronyms")
@@ -48,7 +48,7 @@ class AtsuMoeSource(client: OkHttpClient) : ScraperMangaSource(client) {
             .addQueryParameter("page", page.toString())
         if (sort != null) {
             b.addQueryParameter("sort_by", sort)
-            b.addQueryParameter("filter_by", "hidden:!=true && views:>0")
+            b.addQueryParameter("filter_by", "hidden:!=true && views:>0" + (tag?.let { " && tags:=[`$it`]" } ?: ""))
         } else {
             b.addQueryParameter("infix", "off,off,fallback,off,off")
             b.addQueryParameter("filter_by", "hidden:!=true")
@@ -63,6 +63,15 @@ class AtsuMoeSource(client: OkHttpClient) : ScraperMangaSource(client) {
     }
 
     override suspend fun popular(page: Int) = typesense("*", page, "views:desc")
+
+    /** Typesense tag filters are case-sensitive; try the tag as given, then word-capitalised. */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val t = tag.trim().replace("`", "").ifEmpty { return PagedResult(emptyList(), false) }
+        val r = typesense("*", page, "views:desc", t)
+        if (r.items.isNotEmpty() || page > 1) return r
+        val cap = t.split(' ').joinToString(" ") { w -> w.lowercase().replaceFirstChar { it.uppercase() } }
+        return if (cap == t) r else typesense("*", page, "views:desc", cap)
+    }
 
     override suspend fun latest(page: Int): PagedResult<Entry> {
         val url = "$baseUrl/api/home2/recentlyUpdated?offset=${(page - 1) * perPage}&limit=$perPage&adult=1"

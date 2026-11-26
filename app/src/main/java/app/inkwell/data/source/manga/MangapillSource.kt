@@ -5,13 +5,14 @@ import app.inkwell.data.model.EntryDetails
 import app.inkwell.data.model.Episode
 import app.inkwell.data.model.Page
 import app.inkwell.data.model.PagedResult
+import app.inkwell.data.model.chapterNumber
 import app.inkwell.data.source.ScraperMangaSource
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.jsoup.nodes.Element
 
 /** Port of Mihon's Mangapill extension (mangapill.com). Manga only; no manhwa. */
-class MangapillSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class MangapillSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://mangapill.com"
     override val id = "mangapill"
     override val name = "Mangapill"
@@ -26,11 +27,23 @@ class MangapillSource(client: OkHttpClient) : ScraperMangaSource(client) {
             val a = el.selectFirst("a[href^=/manga/]:has(div)") ?: return@mapNotNull null
             val title = a.selectFirst("div.font-black, div.font-bold")?.text()?.ifEmpty { null } ?: return@mapNotNull null
             val href = a.attr("href")
-            Entry(id, href, title, ref(img(el.selectFirst("img"))), type)
+            Entry(id, href, title, ref(img(el.selectFirst("img"))), type,
+                chapterNumber(el.selectFirst("a[href^=/chapters/] div.font-black")?.text()))
         }.distinctBy { it.id }
 
     override suspend fun popular(page: Int): PagedResult<Entry> {
         val d = doc("$baseUrl/search?type=manga&page=$page")
+        return PagedResult(parseList(d), d.selectFirst("a.btn:containsOwn(Next)") != null)
+    }
+
+    /** /search?genre=<Name>&type=manga (unknown genre yields an empty list). */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val g = tag.trim().ifEmpty { return PagedResult(emptyList(), false) }
+        val url = "$baseUrl/search".toHttpUrl().newBuilder()
+            .addQueryParameter("genre", g)
+            .addQueryParameter("type", "manga")
+            .addQueryParameter("page", page.toString()).build()
+        val d = doc(url)
         return PagedResult(parseList(d), d.selectFirst("a.btn:containsOwn(Next)") != null)
     }
 

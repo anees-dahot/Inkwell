@@ -2,10 +2,12 @@ package app.inkwell.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -50,9 +52,28 @@ fun Modifier.shimmer(): Modifier {
 fun Cover(url: String?, modifier: Modifier = Modifier, ratio: Float = 2f / 3f) {
     val ink = LocalInk.current
     Box(
-        modifier.aspectRatio(ratio).clip(RoundedCornerShape(CoverRadius)).background(ink.secondary.copy(alpha = 0.12f)),
+        modifier.aspectRatio(ratio).clip(RoundedCornerShape(CoverRadius)).background(ink.secondary.copy(alpha = 0.12f))
+            // hairline edge keeps pale covers from bleeding into the background
+            .border(0.5.dp, ink.label.copy(alpha = 0.08f), RoundedCornerShape(CoverRadius)),
     ) {
-        if (url != null) AsyncImage(url, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        if (url != null) {
+            // quietly retry failed covers (flaky / slow links); the key forces a fresh request
+            var attempt by remember(url) { mutableIntStateOf(0) }
+            var failed by remember(url) { mutableStateOf(false) }
+            LaunchedEffect(failed, attempt) {
+                if (failed && attempt < 2) { kotlinx.coroutines.delay(2_000L * (attempt + 1)); failed = false; attempt++ }
+            }
+            key(attempt) {
+                AsyncImage(
+                    url, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop,
+                    onError = { failed = true }, onSuccess = { failed = false },
+                )
+            }
+            if (failed && attempt >= 2) Icon(
+                Icons.Outlined.BrokenImage, null, tint = ink.secondary.copy(alpha = 0.6f),
+                modifier = Modifier.align(Alignment.Center).size(28.dp),
+            )
+        }
     }
 }
 
@@ -78,6 +99,7 @@ fun EntryGridItem(
         Box {
             Cover(entry.coverUrl, Modifier.fillMaxWidth().sharedCover("cover-${entry.sourceId}-${entry.id}"))
             UnreadBadge(badge, Modifier.align(Alignment.TopEnd).padding(6.dp))
+            ChapterBadge(entry.latest, Modifier.align(Alignment.TopStart).padding(6.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -233,4 +255,28 @@ fun SectionHeader(text: String) {
         text.uppercase(), style = InkType.caption.copy(fontSize = 13.sp, letterSpacing = 0.sp), color = LocalInk.current.secondary,
         modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 24.dp, bottom = 6.dp),
     )
+}
+
+/** Thin determinate bar for "n of m sources answered". */
+@Composable
+fun FeedProgress(done: Int, total: Int, modifier: Modifier = Modifier) {
+    val ink = LocalInk.current
+    val f by animateFloatAsState(if (total == 0) 0f else done / total.toFloat(), label = "feed")
+    Column(modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(ink.secondary.copy(alpha = 0.14f))) {
+            Box(Modifier.fillMaxWidth(f).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(ink.accent))
+        }
+        Spacer(Modifier.height(3.dp))
+        Text("$done of $total sources", style = InkType.caption.copy(fontSize = 11.sp), color = ink.secondary, maxLines = 1)
+    }
+}
+
+/** "Ch. 286" pill over a cover's corner; nothing when the number is unknown. */
+@Composable
+fun ChapterBadge(latest: Float?, modifier: Modifier = Modifier) {
+    if (latest == null || latest <= 0f) return
+    val n = if (latest % 1f == 0f) latest.toLong().toString() else latest.toString()
+    Box(
+        modifier.clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.62f)).padding(horizontal = 6.dp, vertical = 2.dp),
+    ) { Text("Ch. $n", color = Color.White, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1) }
 }

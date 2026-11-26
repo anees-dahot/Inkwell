@@ -9,7 +9,9 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
-import okhttp3.OkHttpClient
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
+import okio.Path.Companion.toOkioPath
 
 class InkwellApp : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
@@ -25,21 +27,14 @@ class InkwellApp : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-        val client = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                val req = chain.request()
-                val b = req.newBuilder().header("User-Agent", "Inkwell/0.1 (Android)")
-                if (req.header("Referer") == null) {
-                    app.inkwell.data.source.ImageReferers.forHost(req.url.host)?.let {
-                        b.header("Referer", it).header("User-Agent", app.inkwell.data.source.MangaDexSource.UA)
-                    }
-                }
-                chain.proceed(b.build())
-            }
-            .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
-            .build()
+        val client = container.imageClient
         return ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
+            .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.25).build() }
+            .diskCache {
+                DiskCache.Builder().directory(context.cacheDir.resolve("image_cache").toOkioPath())
+                    .maxSizeBytes(512L * 1024 * 1024).build()
+            }
             .crossfade(true)
             .build()
     }

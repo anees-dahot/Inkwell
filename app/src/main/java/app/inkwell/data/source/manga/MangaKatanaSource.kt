@@ -15,7 +15,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** Port of Mihon's MangaKatana extension (mangakatana.com). */
-class MangaKatanaSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class MangaKatanaSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://mangakatana.com"
     override val id = "mangakatana"
     override val name = "MangaKatana"
@@ -32,12 +32,20 @@ class MangaKatanaSource(client: OkHttpClient) : ScraperMangaSource(client) {
             val a = el.selectFirst("h3.title a") ?: return@mapNotNull null
             val href = a.absUrl("href").ifEmpty { return@mapNotNull null }
             val cover = el.selectFirst(".wrap_img img")?.absUrl("src")?.ifEmpty { null }
-            Entry(id, path(href), a.text().trim(), ref(cover), type)
+            Entry(id, path(href), a.text().trim(), ref(cover), type,
+                app.inkwell.data.model.chapterNumber(el.selectFirst(".chapters .chapter a")?.text()))
         }
         return PagedResult(items, d.selectFirst("a.next.page-numbers") != null)
     }
 
     override suspend fun popular(page: Int) = parseList(doc("$baseUrl/manga/page/$page"))
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try { doc("$baseUrl/genre/$slug/page/$page") } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        return parseList(d)
+    }
     override suspend fun latest(page: Int) = parseList(doc("$baseUrl/latest/page/$page"))
 
     override suspend fun search(query: String, page: Int): PagedResult<Entry> {

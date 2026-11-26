@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,6 +53,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import app.inkwell.data.source.Net
 
 class BrowseViewModel(private val c: AppContainer) : ViewModel() {
     /** Null = all sources of [type] combined. */
@@ -139,7 +142,8 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
                     val r = fetch(c.registry.get(single), page)
                     if (my == gen) {
                         val seen = items.map { it.id }.toHashSet()
-                        items = items + r.items.filter { seen.add(it.id) }
+                        val titles = items.map { titleKey(it.title) }.toHashSet()
+                        items = items + r.items.filter { seen.add(it.id) && titleKey(it.title).let { k -> k.isEmpty() || titles.add(k) } }
                         hasNext = r.hasNext; page++
                     }
                 } else loadAll(my)
@@ -150,29 +154,45 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    private suspend fun loadAll(my: Int) {
+    /**
+     * Combined feed. Results are only ever appended: sources answer at different speeds, and
+     * inserting late arrivals between cards already on screen made the grid jump around. Batches
+     * arriving close together are still interleaved so one fast source doesn't fill the top.
+     */
+    private suspend fun loadAll(my: Int, retried: Boolean = false) {
         val srcs = ordered().filter { moreSources == null || it.id in moreSources!! }
         val order = srcs.map { it.id }
-        val before = items
-        val baseSeen = HashMap<String, Entry>().apply { before.forEach { put(titleKey(it.title).ifEmpty { it.sourceId + it.id }, it) } }
-        val baseAlso = also.mapValues { it.value.toMutableList() }
-        val batches = HashMap<String, List<Entry>>()
+        val seen = HashMap<String, Entry>().apply { items.forEach { put(titleKey(it.title).ifEmpty { it.sourceId + it.id }, it) } }
+        val al = HashMap<String, MutableList<String>>().apply { also.forEach { (k, v) -> put(k, v.toMutableList()) } }
+        val pending = LinkedHashMap<String, List<Entry>>()
         val next = HashSet<String>()
         var failed = 0
-        progress = 0 to srcs.size
-        fanOut(srcs, parallel = 10, timeoutMs = 12_000, op = { fetch(it, page) }) { src, r ->
-            if (my != gen) return@fanOut
-            if (r == null) failed++ else { batches[src.id] = r.items; if (r.hasNext) next += src.id }
-            val seen = HashMap(baseSeen)
-            val al = HashMap<String, MutableList<String>>().apply { baseAlso.forEach { (k, v) -> put(k, v.toMutableList()) } }
-            items = before + interleave(order, batches, seen, al)
-            also = al
-            progress = (progress.first + 1) to srcs.size
+        fun flush() {
+            if (my != gen || pending.isEmpty()) return
+            val add = interleave(order, pending, seen, al)
+            pending.clear()
+            if (add.isNotEmpty()) items = items + add
+            also = al.mapValues { it.value.toList() }
         }
+        progress = 0 to srcs.size
+        coroutineScope {
+            val ticker = launch { while (true) { delay(if (items.isEmpty()) 350 else 700); flush() } }
+            fanOut(srcs, op = { fetch(it, page) }) { src, r ->
+                if (my != gen) return@fanOut
+                if (r == null) failed++ else { pending[src.id] = r.items; if (r.hasNext) next += src.id }
+                progress = (progress.first + 1) to srcs.size
+            }
+            ticker.cancel()
+        }
+        flush()
         if (my != gen) return
+        // everything timed out but we're online: the link is slow — retry once with patient timeouts
+        if (items.isEmpty() && failed == srcs.size && srcs.isNotEmpty() && !retried && Net.online && Net.slow) return loadAll(my, true)
         moreSources = next
         hasNext = next.isNotEmpty(); page++
-        if (items.isEmpty() && failed == srcs.size && srcs.isNotEmpty()) error = "All sources failed. Check your connection."
+        if (items.isEmpty() && failed == srcs.size && srcs.isNotEmpty()) {
+            error = if (Net.online) "No source answered. Your connection may be slow — try again." else "You're offline. Check your connection."
+        }
     }
 
     fun sourceName(id: String) = c.registry.find(id)?.name?.substringBefore(" (") ?: id
@@ -193,6 +213,8 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
     val vm = inkViewModel("browse") { BrowseViewModel(it) }
     val grid = rememberLazyGridState()
     val collapsed by grid.rememberCollapsed()
+    val haptic = LocalHapticFeedback.current
+    var otherFor by remember { mutableStateOf<Entry?>(null) }
     OnTabReselect(2) { grid.animateScrollToItem(0) }
 
     val nearEnd by remember {
@@ -202,7 +224,7 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
             info.totalItemsCount > 0 && last >= info.totalItemsCount - 8
         }
     }
-    LaunchedEffect(nearEnd, vm.items.size) { if (nearEnd) vm.loadMore() }
+    LaunchedEffect(nearEnd, vm.items.size, vm.loading) { if (nearEnd) vm.loadMore() }
 
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -230,8 +252,10 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
                         SegmentedControl(listOf("Popular", "Latest"), vm.tab, vm::selectTab)
                     }
                     val (done, total) = vm.progress
-                    if (vm.sourceId == null && vm.loading && total > 0) {
-                        Text("Loading $done of $total sources…", style = InkType.caption, color = ink.secondary)
+                    // fixed-height slot: swapping progress for the hint must not push the grid around
+                    if (vm.sourceId == null) Box(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
+                        if (vm.loading && total > 0) FeedProgress(done, total)
+                        else if (vm.items.isNotEmpty()) Text("Long-press a title to compare sources", style = InkType.caption, color = ink.secondary)
                     }
                     if (vm.sourceId == null && vm.skipped > 0 && !vm.loading) {
                         Text(
@@ -250,7 +274,11 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
                 item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(Icons.Outlined.SearchOff, "Nothing found.") }
             }
             items(vm.items, key = { it.sourceId + "/" + it.id }) { e ->
-                EntryGridItem(e, subtitle = vm.label(e)) { onOpen(e) }
+                EntryGridItem(
+                    e, Modifier.animateItem(fadeInSpec = androidx.compose.animation.core.tween(220), placementSpec = null, fadeOutSpec = null),
+                    subtitle = vm.label(e),
+                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); otherFor = e },
+                ) { onOpen(e) }
             }
             if (vm.loading && vm.items.isNotEmpty()) {
                 items(3) { SkeletonGridItem() }
@@ -261,12 +289,14 @@ fun BrowseScreen(hazeState: HazeState, onOpen: (Entry) -> Unit) {
         }
         GlassTopBar("Browse", collapsed, hazeState, Modifier.align(Alignment.TopCenter))
     }
+    otherFor?.let { e -> OtherSourcesSheet(e, onDismiss = { otherFor = null }, onOpen = { otherFor = null; onOpen(it) }) }
 
 }
 
 @Composable
 fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String) {
     val ink = LocalInk.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     Row(
         Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp)).background(ink.secondary.copy(alpha = 0.14f)).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -280,10 +310,14 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String) 
                 textStyle = InkType.body.copy(color = ink.label),
                 cursorBrush = SolidColor(ink.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {}),
+                keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        if (value.isNotEmpty()) Icon(
+            Icons.Outlined.Cancel, "Clear", tint = ink.secondary,
+            modifier = Modifier.size(18.dp).clip(RoundedCornerShape(9.dp)).pressable { onChange("") },
+        )
     }
 }
 

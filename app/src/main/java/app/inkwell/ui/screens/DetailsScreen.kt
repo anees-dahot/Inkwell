@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
+import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Close
@@ -137,9 +138,9 @@ class DetailsViewModel(
         val others = c.registry.sources.filter { it.type == source.type && it.id != sourceId && !app.inkwell.data.source.SourceHealth.benched(it.id) }
         findingAlternatives = true
         val found = ArrayList<Entry>()
-        app.inkwell.data.source.fanOut(others, parallel = 8, timeoutMs = 15_000, op = { it.search(title, 1) }) { _, r ->
+        app.inkwell.data.source.fanOut(others, op = { it.search(title, 1) }) { _, r ->
             val hit = r?.items?.firstOrNull { app.inkwell.data.source.titleKey(it.title) == key }
-                ?: r?.items?.firstOrNull { val k = app.inkwell.data.source.titleKey(it.title); k.length > 3 && (k.contains(key) || key.contains(k)) }
+                ?: r?.items?.firstOrNull { app.inkwell.data.source.sameTitle(it.title, title) }
             if (hit != null) { found += hit; alternatives = found.toList() }
         }
         findingAlternatives = false
@@ -228,6 +229,8 @@ fun DetailsScreen(
     sourceId: String, entryId: String, title: String, coverUrl: String?,
     onBack: () -> Unit, onOpenEpisode: (Entry, Episode) -> Unit,
     onOpenEntry: (Entry) -> Unit = {},
+    onOpenTag: (String) -> Unit = {},
+    onOpenSource: (String) -> Unit = {},
 ) {
     val vm = inkViewModel("details/$sourceId/$entryId") { DetailsViewModel(it, sourceId, entryId, title, coverUrl) }
     val ink = LocalInk.current
@@ -264,6 +267,7 @@ fun DetailsScreen(
     var menu by remember { mutableStateOf<String?>(null) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
     var showMigrate by remember { mutableStateOf(false) }
+    var showOtherSources by remember { mutableStateOf(false) }
     val stuck by remember { derivedStateOf { list.firstVisibleItemIndex >= 1 } }
     val stickyTop by androidx.compose.animation.core.animateDpAsState(if (stuck) top else 0.dp, label = "stickyTop")
     androidx.activity.compose.BackHandler(selecting) { vm.selected = emptySet() }
@@ -301,6 +305,14 @@ fun DetailsScreen(
                                     Spacer(Modifier.height(2.dp))
                                     Text(it, style = InkType.callout, color = ink.accent)
                                 }
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    Modifier.clip(RoundedCornerShape(8.dp)).pressable { onOpenSource(sourceId) }.padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(vm.sourceName(sourceId), style = InkType.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = ink.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                    Icon(Icons.AutoMirrored.Outlined.ArrowForwardIos, "Browse source", tint = ink.secondary, modifier = Modifier.padding(start = 4.dp).size(11.dp))
+                                }
                             }
                         }
                         Spacer(Modifier.height(16.dp))
@@ -316,6 +328,7 @@ fun DetailsScreen(
                                 if (!remind) askNotif()
                                 vm.toggleRemind(context)
                             }
+                            FilledPill("Other sources", filled = false) { showOtherSources = true }
                         }
                         resume?.let { (ep, resuming) ->
                             Spacer(Modifier.height(10.dp))
@@ -328,7 +341,7 @@ fun DetailsScreen(
                         vm.details?.genres?.takeIf { it.isNotEmpty() }?.let { g ->
                             Spacer(Modifier.height(16.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                g.take(12).forEach { Chip(it) }
+                                g.take(16).forEach { t -> Chip(t) { onOpenTag(t) } }
                             }
                         }
                         vm.details?.description?.takeIf { it.isNotBlank() }?.let { d ->
@@ -382,13 +395,14 @@ fun DetailsScreen(
                             }
                         }
                     }
-                    if (vm.episodes.isNotEmpty() || inLib) Box {
+                    Box {
                         BarIconButton(Icons.Outlined.MoreVert, "More", tint = ink.secondary) { menu = "more" }
                         DropdownMenu(menu == "more", { menu = null }) {
                             if (vm.episodes.isNotEmpty()) {
                                 DropdownMenuItem({ Text("Mark all read") }, { menu = null; vm.markAllRead() })
                                 DropdownMenuItem({ Text("Mark all unread") }, { menu = null; vm.markRead(vm.episodes.map { it.id }, false) })
                             }
+                            DropdownMenuItem({ Text("Find on other sources") }, { menu = null; showOtherSources = true })
                             if (inLib) DropdownMenuItem({ Text("Migrate to another source") }, { menu = null; showMigrate = true })
                         }
                     }
@@ -552,6 +566,7 @@ fun DetailsScreen(
         "Add to category", categories,
         onPick = { showCategoryPicker = false; vm.addToLibrary(it) }, onDismiss = { showCategoryPicker = false },
     )
+    if (showOtherSources) OtherSourcesSheet(entry, onDismiss = { showOtherSources = false }, onOpen = { showOtherSources = false; onOpenEntry(it) })
     if (showMigrate) MigrateDialog(
         MigrateTarget(sourceId, entryId, entry.title, entry.coverUrl, entry.type),
         onDismiss = { showMigrate = false },

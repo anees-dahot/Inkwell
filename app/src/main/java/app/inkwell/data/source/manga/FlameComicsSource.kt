@@ -19,7 +19,7 @@ import org.jsoup.Jsoup
  * Flame Comics (flamecomics.xyz, Next.js). Reads the __NEXT_DATA__ blob of each page.
  * Entry id = "series/{id}", episode id = "series/{id}/{token}".
  */
-class FlameComicsSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class FlameComicsSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://flamecomics.xyz"
     override val id = "flamecomics"
     override val name = "Flame Comics"
@@ -73,6 +73,16 @@ class FlameComicsSource(client: OkHttpClient) : ScraperMangaSource(client) {
 
     override suspend fun latest(page: Int) =
         slice(allSeries().sortedByDescending { it["last_edit"].str()?.toLongOrNull() ?: 0L }, page)
+
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val t = tag.trim()
+        if (t.isEmpty()) return PagedResult(emptyList(), false)
+        val hits = allSeries().filter { s ->
+            (s["categories"] as? kotlinx.serialization.json.JsonArray ?: s["tags"] as? kotlinx.serialization.json.JsonArray)
+                ?.any { it.str()?.trim().equals(t, true) } == true
+        }.sortedBy { it["popularityRank"].str()?.toIntOrNull() ?: Int.MAX_VALUE }
+        return slice(hits, page)
+    }
 
     override suspend fun search(query: String, page: Int): PagedResult<Entry> {
         if (query.isBlank()) return popular(page)

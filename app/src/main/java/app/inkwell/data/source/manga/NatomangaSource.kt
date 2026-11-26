@@ -24,7 +24,7 @@ import java.net.URLDecoder
  * extension uses. Image CDN (2xstorage.com) requires the site Referer; [ref] registers it.
  * Search is behind a Cloudflare managed challenge: it raises CloudflareException so the app can solve it in WebView.
  */
-class NatomangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class NatomangaSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://www.manganato.gg"
     override val id = "natomanga"
     override val name = "Natomanga"
@@ -40,7 +40,8 @@ class NatomangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
             val href = a.absUrl("href").ifEmpty { return@mapNotNull null }
             val im = el.selectFirst("a.cover img, img")
             val cover = (im?.absUrl("data-src")?.ifEmpty { null } ?: im?.absUrl("src")?.ifEmpty { null })
-            Entry(id, path(href), a.text().trim(), ref(cover), type)
+            Entry(id, path(href), a.text().trim(), ref(cover), type,
+                app.inkwell.data.model.chapterNumber(el.selectFirst("a.list-story-item-wrap-chapter")?.text()))
         }
         val cur = d.selectFirst(".group-page a.page_select")?.text()?.trim()?.toIntOrNull()
         val last = d.select(".group-page a[href]").mapNotNull {
@@ -51,6 +52,13 @@ class NatomangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
     }
 
     override suspend fun popular(page: Int) = parseList(doc("$baseUrl/genre/all?type=topview&page=$page"))
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try { doc("$baseUrl/genre/$slug?type=topview&page=$page") } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        return parseList(d)
+    }
     override suspend fun latest(page: Int) = parseList(doc("$baseUrl/manga-list/latest-manga?page=$page"))
 
     override suspend fun search(query: String, page: Int): PagedResult<Entry> {

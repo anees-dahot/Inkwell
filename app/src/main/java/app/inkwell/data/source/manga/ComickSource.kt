@@ -21,7 +21,7 @@ import okhttp3.OkHttpClient
  * Search/browse is open; /comic and /chapter endpoints sit behind a Cloudflare challenge, so
  * details/chapters/pages rely on the app's Cloudflare WebView clearance (CloudflareException).
  */
-class ComickSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class ComickSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://comick.dev"
     override val id = "comick"
     override val name = "Comick"
@@ -40,17 +40,19 @@ class ComickSource(client: OkHttpClient) : ScraperMangaSource(client) {
         return ref(key?.let { "https://meo.comick.pictures/$it" } ?: s(o["cover_url"]))
     }
 
-    private suspend fun browse(page: Int, sort: String?, q: String?): PagedResult<Entry> {
+    private suspend fun browse(page: Int, sort: String?, q: String?, genre: String? = null): PagedResult<Entry> {
         val b = "$api/v1.0/search".toHttpUrl().newBuilder()
             .addQueryParameter("page", page.toString())
             .addQueryParameter("limit", pageSize.toString())
             .addQueryParameter("tachiyomi", "true")
         sort?.let { b.addQueryParameter("sort", it) }
         q?.let { b.addQueryParameter("q", it) }
+        genre?.let { b.addQueryParameter("genres", it) }
         for (c in listOf("safe", "suggestive", "erotica", "pornographic")) b.addQueryParameter("content_rating", c)
         val arr = json(b.build()).jsonArray
         val items = arr.map { it.jsonObject }.map { o ->
-            Entry(id, "/comic/${s(o["hid"])}", s(o["title"]).orEmpty(), cover(o), type)
+            Entry(id, "/comic/${s(o["hid"])}", s(o["title"]).orEmpty(), cover(o), type,
+                s(o["last_chapter"])?.toFloatOrNull())
         }
         return PagedResult(items, items.size >= pageSize)
     }
@@ -58,6 +60,11 @@ class ComickSource(client: OkHttpClient) : ScraperMangaSource(client) {
     override suspend fun popular(page: Int) = browse(page, "view", null)
 
     override suspend fun latest(page: Int) = browse(page, "uploaded", null)
+
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        return browse(page, "view", null, slug)
+    }
 
     override suspend fun search(query: String, page: Int): PagedResult<Entry> =
         if (query.isBlank()) popular(page) else browse(page, null, query.trim())

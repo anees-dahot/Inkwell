@@ -22,7 +22,7 @@ import java.time.format.DateTimeFormatterBuilder
 import java.util.Locale
 
 /** Port of Mihon's MangaRawClub extension (mgeko.cc). */
-class MangaRawClubSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class MangaRawClubSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://www.mgeko.cc"
     override val id = "mangarawclub"
     override val name = "MangaRaw.Club"
@@ -59,6 +59,12 @@ class MangaRawClubSource(client: OkHttpClient) : ScraperMangaSource(client) {
 
     override suspend fun popular(page: Int) =
         browse("$baseUrl/browse-comics/data/?page=$page&sort=popular_all_time&safe_mode=0")
+
+    /** Unverified (Cloudflare): data endpoint takes ?genre=<slug>. */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        return browse("$baseUrl/browse-comics/data/?page=$page&sort=popular_all_time&safe_mode=0&genre=$slug")
+    }
 
     override suspend fun latest(page: Int) =
         browse("$baseUrl/browse-comics/data/?page=$page&sort=latest&safe_mode=0")

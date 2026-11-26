@@ -22,7 +22,7 @@ import java.util.Locale
  * Base for sites running the WordPress "MangaThemesia" (a.k.a. MangaStream /
  * Asura-old style) theme — port of Keiyoushi lib-multisrc/mangathemesia.
  */
-abstract class MangaThemesiaSource(client: OkHttpClient) : ScraperMangaSource(client) {
+abstract class MangaThemesiaSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val lang = "en"
     override val headers: Map<String, String> get() = mapOf("Referer" to "$baseUrl/")
 
@@ -53,7 +53,7 @@ abstract class MangaThemesiaSource(client: OkHttpClient) : ScraperMangaSource(cl
             val href = a.absUrl("href").ifEmpty { return@mapNotNull null }
             val title = a.attr("title").ifEmpty { el.selectFirst(".tt")?.text().orEmpty() }.trim()
             if (title.isEmpty()) return@mapNotNull null
-            Entry(id, path(href), title, ref(imgUrl(el.selectFirst("img"))), type)
+            Entry(id, path(href), title, ref(imgUrl(el.selectFirst("img"))), type, app.inkwell.data.model.chapterNumber(el.selectFirst(".epxs")?.text()))
         }.distinctBy { it.id }
         return PagedResult(items, d.selectFirst(nextPageSelector) != null)
     }
@@ -68,6 +68,8 @@ abstract class MangaThemesiaSource(client: OkHttpClient) : ScraperMangaSource(cl
         "$baseUrl$mangaUrlDirectory/?page=$page&order=$order"
 
     override suspend fun popular(page: Int) = listing(browseUrl(page, popularOrder))
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> =
+        listing(browseUrl(page, popularOrder) + "&genre%5B%5D=" + app.inkwell.data.model.tagSlug(tag))
     override suspend fun latest(page: Int) = listing(browseUrl(page, latestOrder))
 
     protected open fun searchUrl(query: String, page: Int): String =

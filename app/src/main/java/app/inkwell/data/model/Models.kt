@@ -8,7 +8,19 @@ data class Entry(
     val title: String,
     val coverUrl: String?,
     val type: ContentType,
+    /** Newest chapter number shown on listing pages, when the source lists it. */
+    val latest: Float? = null,
 )
+
+private val CHAPTER_NUM = Regex("""(?:chapter|chap|ch|episode|ep)\.?\s*(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+private val ANY_NUM = Regex("""(\d+(?:\.\d+)?)""")
+
+/** "Chapter 123.5", "Ch. 7 - Title", "123" -> 123.5 / 7 / 123; null when there's no number. */
+fun chapterNumber(text: String?): Float? {
+    val t = text?.trim().orEmpty()
+    if (t.isEmpty()) return null
+    return (CHAPTER_NUM.find(t) ?: ANY_NUM.find(t))?.groupValues?.get(1)?.toFloatOrNull()?.takeIf { it < 100_000 }
+}
 
 data class EntryDetails(
     val entry: Entry,
@@ -61,3 +73,18 @@ interface VideoSource : Source {
 interface NovelSource : Source {
     suspend fun chapterText(episodeId: String): List<String>
 }
+
+/** Optional: sources that can list every title carrying a genre / tag. */
+interface TagBrowsable {
+    suspend fun byTag(tag: String, page: Int): PagedResult<Entry>
+}
+
+/** "Slice of Life" -> "slice-of-life" (WordPress genre slug). */
+fun tagSlug(tag: String): String =
+    tag.trim().lowercase().replace("&", "and").replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+/** Drops blank and repeated page images (lazy-load + noscript copies, repeated ad slots) and reindexes. */
+fun List<Page>.cleanPages(): List<Page> =
+    filter { it.imageUrl.isNotBlank() }
+        .distinctBy { it.imageUrl.substringBefore('#') }
+        .mapIndexed { i, p -> if (p.index == i) p else p.copy(index = i) }

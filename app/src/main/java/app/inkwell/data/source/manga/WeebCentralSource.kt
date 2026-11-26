@@ -11,7 +11,7 @@ import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 
 /** Port of Mihon's WeebCentral extension (weebcentral.com). Entry id = "series/{ulid}", episode id = "chapters/{ulid}". */
-class WeebCentralSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class WeebCentralSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://weebcentral.com"
     override val id = "weebcentral"
     override val name = "Weeb Central"
@@ -24,11 +24,12 @@ class WeebCentralSource(client: OkHttpClient) : ScraperMangaSource(client) {
     private fun seriesId(url: String) = Regex("""series/([0-9A-Za-z]+)""").find(url)?.groupValues?.get(1)
     private fun cover(sid: String) = ref("https://temp.compsci88.com/cover/fallback/$sid.jpg")
 
-    private suspend fun browse(page: Int, sort: String, text: String? = null): PagedResult<Entry> {
+    private suspend fun browse(page: Int, sort: String, text: String? = null, tag: String? = null): PagedResult<Entry> {
         val url = "$baseUrl/search/data".toHttpUrl().newBuilder()
             .addQueryParameter("limit", pageSize.toString())
             .addQueryParameter("offset", ((page - 1) * pageSize).toString())
             .apply { if (!text.isNullOrBlank()) addQueryParameter("text", text.trim()) }
+            .apply { if (tag != null) addQueryParameter("included_tag", tag) }
             .addQueryParameter("sort", sort)
             .addQueryParameter("order", "Descending")
             .addQueryParameter("official", "Any")
@@ -47,6 +48,10 @@ class WeebCentralSource(client: OkHttpClient) : ScraperMangaSource(client) {
 
     override suspend fun popular(page: Int) = browse(page, "Popularity")
     override suspend fun latest(page: Int) = browse(page, "Latest Updates")
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val t = tag.trim().ifEmpty { return PagedResult(emptyList(), false) }
+        return browse(page, "Popularity", tag = t)
+    }
     override suspend fun search(query: String, page: Int) =
         if (query.isBlank()) popular(page) else browse(page, "Best Match", query)
 

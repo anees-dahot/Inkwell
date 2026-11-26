@@ -22,7 +22,7 @@ import org.jsoup.Jsoup
  * Asura Scans (asurascans.com; asuracomic.net redirects here). Site is Astro with a
  * public JSON API at api.asurascans.com. Entry id = "series/{slug}", episode id = "series/{slug}/chapters/{number}".
  */
-class AsuraScansMangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class AsuraScansMangaSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://asurascans.com"
     override val id = "asura"
     override val name = "Asura Scans"
@@ -35,13 +35,14 @@ class AsuraScansMangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
 
     private fun JsonElement?.str() = (this as? JsonPrimitive)?.contentOrNull
 
-    private suspend fun browse(page: Int, sort: String, search: String? = null): PagedResult<Entry> {
+    private suspend fun browse(page: Int, sort: String, search: String? = null, genre: String? = null): PagedResult<Entry> {
         val offset = (page - 1) * pageSize
         val url = "$api/series".toHttpUrl().newBuilder()
             .addQueryParameter("limit", pageSize.toString())
             .addQueryParameter("offset", offset.toString())
             .addQueryParameter("sort", sort)
             .apply { if (!search.isNullOrBlank()) addQueryParameter("search", search.trim()) }
+            .apply { if (genre != null) addQueryParameter("genres", genre) }
             .build()
         val o = json(url).jsonObject
         val items = o["data"]?.jsonArray.orEmpty().mapNotNull { toEntry(it.jsonObject) }
@@ -52,11 +53,16 @@ class AsuraScansMangaSource(client: OkHttpClient) : ScraperMangaSource(client) {
     private fun toEntry(s: JsonObject): Entry? {
         val slug = s["slug"].str() ?: return null
         val title = s["title"].str() ?: return null
-        return Entry(id, "series/$slug", title, ref(s["cover"].str()), type)
+        return Entry(id, "series/$slug", title, ref(s["cover"].str()), type,
+            s["latest_chapters"]?.jsonArray?.mapNotNull { it.jsonObject["number"].str()?.toFloatOrNull() }?.maxOrNull())
     }
 
     override suspend fun popular(page: Int) = browse(page, "popular")
     override suspend fun latest(page: Int) = browse(page, "latest")
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        return browse(page, "popular", genre = slug)
+    }
     override suspend fun search(query: String, page: Int) =
         if (query.isBlank()) popular(page) else browse(page, "popular", query)
 

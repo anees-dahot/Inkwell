@@ -28,7 +28,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 
 /**
  * Renders very tall images (webtoon strips) as a stack of horizontal tiles.
@@ -53,8 +52,16 @@ fun TiledImage(
         var state by remember(url) { mutableStateOf<TileState>(TileState.Loading) }
         LaunchedEffect(url, targetWidth, attempt) {
             state = TileState.Loading
-            state = runCatching { loadTiles(context, url, targetWidth) }
-                .fold({ TileState.Ready(it) }, { TileState.Failed })
+            var tries = 0
+            while (true) {
+                val r = try { Result.success(loadTiles(context, url, targetWidth)) }
+                catch (c: kotlinx.coroutines.CancellationException) { throw c }
+                catch (e: Throwable) { Result.failure(e) }
+                if (r.isSuccess) { state = TileState.Ready(r.getOrThrow()); break }
+                // quiet automatic retries first (slow / flaky links), then show the tap-to-retry state
+                if (++tries >= 3) { state = TileState.Failed; break }
+                kotlinx.coroutines.delay(1_500L * tries)
+            }
         }
         when (val s = state) {
             TileState.Loading -> placeholder()
@@ -80,24 +87,11 @@ private sealed interface TileState {
 
 private const val TILE_PX = 2048
 
-private val client by lazy {
-    OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .addInterceptor { chain ->
-            val req = chain.request()
-            val b = req.newBuilder().header("User-Agent", "Inkwell/0.1 (Android)")
-            if (req.header("Referer") == null) {
-                app.inkwell.data.source.ImageReferers.forHost(req.url.host)?.let {
-                    b.header("Referer", it).header("User-Agent", app.inkwell.data.source.MangaDexSource.UA)
-                }
-            }
-            chain.proceed(b.build())
-        }
-        .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
-        .build()
-}
+private fun client(context: Context): OkHttpClient =
+    (context.applicationContext as app.inkwell.InkwellApp).container.imageClient
+
+/** One in-flight download per url: the reader and the prefetcher must not write the same file at once. */
+private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
 private suspend fun loadTiles(context: Context, url: String, targetWidth: Int): List<ImageBitmap> =
     withContext(Dispatchers.IO) {
@@ -106,7 +100,10 @@ private suspend fun loadTiles(context: Context, url: String, targetWidth: Int): 
         BitmapFactory.decodeFile(file.path, bounds)
         val w = bounds.outWidth
         val h = bounds.outHeight
-        require(w > 0 && h > 0) { "Undecodable image" }
+        if (w <= 0 || h <= 0) {
+            if (!url.startsWith("file:") && !url.startsWith("/")) file.delete() // corrupt cache entry: refetch next time
+            error("Undecodable image")
+        }
 
         // Largest power-of-two sample that keeps width >= view width (no upscale blur).
         var sample = 1
@@ -136,13 +133,24 @@ private fun download(context: Context, url: String): File {
     val dir = File(context.cacheDir, "pages").apply { mkdirs() }
     val name = MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
     val file = File(dir, name)
-    if (file.length() > 0) return file
-    val tmp = File(dir, "$name.part")
-    client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-        check(r.isSuccessful) { "HTTP ${r.code}" }
-        tmp.outputStream().use { out -> r.body!!.byteStream().copyTo(out) }
-    }
-    check(tmp.renameTo(file)) { "Cache write failed" }
+    if (file.length() > 0) { file.setLastModified(System.currentTimeMillis()); return file }
+    val lock = locks.getOrPut(name) { Any() }
+    try {
+        synchronized(lock) {
+            if (file.length() > 0) return file
+            val tmp = File(dir, "$name.${Thread.currentThread().id}.part")
+            try {
+                client(context).newCall(Request.Builder().url(url).build()).execute().use { r ->
+                    check(r.isSuccessful) { "HTTP ${r.code}" }
+                    val body = r.body ?: error("Empty response")
+                    tmp.outputStream().use { out -> body.byteStream().copyTo(out) }
+                }
+                check(tmp.length() > 0) { "Empty image" }
+                if (!tmp.renameTo(file)) { file.delete(); check(tmp.renameTo(file)) { "Cache write failed" } }
+            } finally { tmp.delete() }
+        }
+    } finally { locks.remove(name, lock) }
+    file.setLastModified(System.currentTimeMillis())
     trimCache(dir)
     return file
 }

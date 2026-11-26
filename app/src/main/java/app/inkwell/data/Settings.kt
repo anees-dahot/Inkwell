@@ -47,7 +47,15 @@ class Settings(context: Context) {
     val lang: StateFlow<String> = _lang
     fun setLang(v: String) { _lang.value = v; sp.edit().putString("lang", v).apply() }
 
-    private val _mode = MutableStateFlow(enumOf(sp.getString("mode", null), ReaderMode.AUTO))
+    private val _mode = MutableStateFlow(run {
+        // v1.5: long strip is the default reading mode; move users still on the old default over once
+        if (!sp.getBoolean("mode_v15", false)) {
+            sp.edit().putBoolean("mode_v15", true).apply {
+                if (sp.getString("mode", null).let { it == null || it == ReaderMode.AUTO.name }) putString("mode", ReaderMode.WEBTOON.name)
+            }.apply()
+        }
+        enumOf(sp.getString("mode", null), ReaderMode.WEBTOON)
+    })
     val readerMode: StateFlow<ReaderMode> = _mode
     fun setReaderMode(v: ReaderMode) { _mode.value = v; sp.edit().putString("mode", v.name).apply() }
 

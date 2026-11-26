@@ -50,11 +50,11 @@ data class MigrateResult(val mappedRead: Int, val totalChapters: Int)
 
 class Repository(
     val registry: SourceRegistry, private val db: InkDatabase, val settings: Settings,
-    private val appContext: Context, http: OkHttpClient,
+    private val appContext: Context, http: OkHttpClient, images: OkHttpClient = http,
 ) {
     val prefs = LibraryPrefs(appContext)
     val store = DownloadStore(File(appContext.filesDir, "downloads")).also { runCatching { it.cleanTemp() } }
-    val downloader = ChapterDownloader(registry, http, store)
+    val downloader = ChapterDownloader(registry, images, store)
     private val detailsCache = ConcurrentHashMap<String, EntryDetails>()
     private val episodeCache = ConcurrentHashMap<String, List<Episode>>()
 
@@ -69,7 +69,8 @@ class Repository(
     suspend fun pages(sourceId: String, entryId: String, episodeId: String): List<Page> {
         val files = store.pageFiles(sourceId, entryId, episodeId)
         if (files.isNotEmpty()) return files.mapIndexed { i, f -> Page(i, "file://" + f.absolutePath) }
-        return (registry.get(sourceId) as MangaSource).pages(episodeId)
+        // some sites list the same image twice (lazy-load + noscript copies, repeated ad slots)
+        return (registry.get(sourceId) as MangaSource).pages(episodeId).cleanPages()
     }
 
     suspend fun details(sourceId: String, entryId: String): EntryDetails {
@@ -309,7 +310,7 @@ class Repository(
     suspend fun clearDownloadQueue() {
         app.inkwell.work.Downloads.stop(appContext)
         db.downloads().clearQueue()
-        store.cleanTemp()
+        store.cleanTemp(0)
     }
     suspend fun deleteDownloads(items: Collection<DownloadItem>) { for (i in items) cancelDownload(i) }
     suspend fun deleteEntryDownloads(s: String, e: String) {

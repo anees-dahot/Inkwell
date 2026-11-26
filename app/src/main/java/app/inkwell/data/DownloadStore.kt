@@ -49,5 +49,9 @@ class DownloadStore(private val root: File) {
     fun sizeOf(dir: File): Long = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     /** Removes leftover .tmp dirs from interrupted downloads. */
-    fun cleanTemp() { root.walkTopDown().filter { it.isDirectory && it.name.endsWith(".tmp") }.toList().forEach { it.deleteRecursively() } }
+    /** Partial chapters are kept for resuming after a dropped connection; stale ones (2+ days) are removed. */
+    fun cleanTemp(maxAgeMs: Long = 2L * 24 * 60 * 60 * 1000) {
+        val cutoff = System.currentTimeMillis() - maxAgeMs
+        root.walkTopDown().filter { it.isDirectory && it.name.endsWith(".tmp") && it.lastModified() <= cutoff }.toList().forEach { it.deleteRecursively() }
+    }
 }

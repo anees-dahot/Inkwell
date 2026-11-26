@@ -8,4 +8,5 @@ class MangaDistrictSource(client: OkHttpClient) : AdultMadaraSource(client) {
     override val id = "mangadistrict"
     override val name = "MangaDistrict (18+)"
     override val seriesPath = "series"
+    override val genreSubString = "publication-genre"
 }

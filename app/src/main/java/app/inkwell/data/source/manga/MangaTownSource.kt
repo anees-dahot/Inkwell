@@ -11,7 +11,7 @@ import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 
 /** Port of Keiyoushi's MangaTown extension (www.mangatown.com). */
-class MangaTownSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class MangaTownSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://www.mangatown.com"
     override val id = "mangatown"
     override val name = "MangaTown"
@@ -31,12 +31,19 @@ class MangaTownSource(client: OkHttpClient) : ScraperMangaSource(client) {
         val items = d.select("ul.manga_pic_list > li").mapNotNull { el ->
             val a = el.selectFirst("a.manga_cover") ?: return@mapNotNull null
             val title = el.selectFirst("p.title a")?.text()?.trim()?.ifEmpty { null } ?: a.attr("title")
-            Entry(id, a.attr("href"), title, ref(https(a.selectFirst("img")?.attr("src"))), type)
+            Entry(id, a.attr("href"), title, ref(https(a.selectFirst("img")?.attr("src"))), type,
+                app.inkwell.data.model.chapterNumber(el.selectFirst("p.new_chapter a")?.text()?.trim()?.substringAfterLast(' ')))
         }
         return PagedResult(items, d.selectFirst("div.next-page a.next:not([href^=javascript])") != null)
     }
 
     override suspend fun popular(page: Int) = listing(doc("$baseUrl/directory/0-0-0-0-0-0/$page.htm?views.za"))
+
+    /** /directory/0-<genre_slug>-0-0-0-0/<page>.htm (underscore slugs, e.g. slice_of_life). */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).replace('-', '_').ifEmpty { return PagedResult(emptyList(), false) }
+        return listing(doc("$baseUrl/directory/0-$slug-0-0-0-0/$page.htm?views.za"))
+    }
 
     override suspend fun latest(page: Int) = listing(doc("$baseUrl/directory/0-0-0-0-0-0/$page.htm?last_chapter_time.za"))
 

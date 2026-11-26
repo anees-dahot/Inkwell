@@ -164,8 +164,22 @@ class ReaderViewModel(
     }
     private val markedRead = mutableSetOf<String>()
 
-    /** Index in [episodes] (newest first). */
-    fun nextOf(ep: Episode): Episode? = episodes.indexOfFirst { it.id == ep.id }.takeIf { it > 0 }?.let { episodes[it - 1] }
-    fun prevOf(ep: Episode): Episode? =
-        episodes.indexOfFirst { it.id == ep.id }.takeIf { it >= 0 && it < episodes.lastIndex }?.let { episodes[it + 1] }
+    /**
+     * Neighbouring chapter in [episodes] (newest first). Several groups often upload the same
+     * chapter; those copies are skipped (preferring the reader's current group) so "next" never
+     * replays the chapter just finished.
+     */
+    fun nextOf(ep: Episode): Episode? = neighbour(ep, newer = true)
+    fun prevOf(ep: Episode): Episode? = neighbour(ep, newer = false)
+
+    private fun neighbour(ep: Episode, newer: Boolean): Episode? {
+        val i = episodes.indexOfFirst { it.id == ep.id }
+        if (i < 0) return null
+        val range = if (newer) (i - 1 downTo 0) else (i + 1..episodes.lastIndex)
+        val n = ep.number
+        if (n == null) return range.firstOrNull()?.let { episodes[it] }
+        val candidates = range.map { episodes[it] }.filter { it.number == null || it.number != n }
+        val target = candidates.firstOrNull()?.number ?: return candidates.firstOrNull()
+        return candidates.filter { it.number == target }.let { same -> same.firstOrNull { it.scanlator == ep.scanlator } ?: same.first() }
+    }
 }

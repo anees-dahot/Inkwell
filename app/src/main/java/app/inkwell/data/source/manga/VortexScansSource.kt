@@ -19,7 +19,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
 /** vortexscans.org — Next.js site backed by a JSON API at api.vortexscans.org (not Madara/Themesia). */
-class VortexScansSource(client: OkHttpClient) : ScraperMangaSource(client) {
+class VortexScansSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://vortexscans.org"
     override val id = "vortexscans"
     override val name = "Vortex Scans"
@@ -34,21 +34,40 @@ class VortexScansSource(client: OkHttpClient) : ScraperMangaSource(client) {
 
     private fun slugOf(entryId: String) = entryId.trim('/').removePrefix("series/").substringBefore('/')
 
-    private suspend fun query(order: String, term: String, page: Int): PagedResult<Entry> {
+    private suspend fun query(order: String, term: String, page: Int, genreId: Int? = null): PagedResult<Entry> {
         val url = "$api/api/query".toHttpUrl().newBuilder()
             .addQueryParameter("page", page.toString())
             .addQueryParameter("perPage", perPage.toString())
             .addQueryParameter("searchTerm", term)
-            .addQueryParameter("orderBy", order).build()
+            .addQueryParameter("orderBy", order)
+            .apply { if (genreId != null) addQueryParameter("genreIds", genreId.toString()) }.build()
         val o = json(url).jsonObject
         val items = o["posts"]?.jsonArray.orEmpty().mapNotNull { p ->
             val po = p.jsonObject
             val slug = po.str("slug") ?: return@mapNotNull null
             if (po["isNovel"]?.jsonPrimitive?.booleanOrNull == true) return@mapNotNull null
-            Entry(id, "series/$slug", po.str("postTitle") ?: slug, ref(po.str("featuredImage")), type)
+            Entry(id, "series/$slug", po.str("postTitle") ?: slug, ref(po.str("featuredImage")), type,
+                po["chapters"]?.jsonArray?.mapNotNull { it.jsonObject.str("number")?.toFloatOrNull() }?.maxOrNull())
         }
         val total = o["totalCount"]?.jsonPrimitive?.intOrNull ?: 0
         return PagedResult(items, page * perPage < total)
+    }
+
+    @Volatile private var genreIds: Map<String, Int>? = null
+
+    private suspend fun genreId(tag: String): Int? {
+        val m = genreIds ?: json("$api/api/genres").jsonArray.mapNotNull { g ->
+            val o = g.jsonObject
+            val n = o.str("name")?.lowercase() ?: return@mapNotNull null
+            val i = o["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            n to i
+        }.toMap().also { genreIds = it }
+        return m[tag.trim().lowercase()]
+    }
+
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val gid = genreId(tag) ?: return PagedResult(emptyList(), false)
+        return query("totalViews", "", page, gid)
     }
 
     override suspend fun popular(page: Int) = query("totalViews", "", page)

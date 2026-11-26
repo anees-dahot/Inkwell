@@ -20,7 +20,7 @@ import java.util.Locale
  * (port of Keiyoushi lib-multisrc/madara). Subclasses only set id/name/baseUrl
  * and override the open knobs below when a site deviates.
  */
-abstract class MadaraSource(client: OkHttpClient) : ScraperMangaSource(client) {
+abstract class MadaraSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val lang = "en"
     override val headers: Map<String, String> get() = mapOf("Referer" to "$baseUrl/")
 
@@ -60,7 +60,8 @@ abstract class MadaraSource(client: OkHttpClient) : ScraperMangaSource(client) {
         val items = d.select(itemSel).mapNotNull { el ->
             val a = el.selectFirst(titleSelector) ?: return@mapNotNull null
             val href = a.absUrl("href").ifEmpty { return@mapNotNull null }
-            Entry(id, path(href), a.text().trim(), ref(imgUrl(el.selectFirst(thumbSelector))), type)
+            val latest = app.inkwell.data.model.chapterNumber(el.selectFirst(".chapter-item .chapter a, .list-chapter .chapter a, .latest-chap .chapter a, span.chapter a")?.text())
+            Entry(id, path(href), a.text().trim(), ref(imgUrl(el.selectFirst(thumbSelector))), type, latest)
         }.distinctBy { it.id }
         return PagedResult(items, items.isNotEmpty())
     }
@@ -69,6 +70,11 @@ abstract class MadaraSource(client: OkHttpClient) : ScraperMangaSource(client) {
         "$baseUrl/$mangaSubString/page/$page/?m_orderby=$order"
 
     override suspend fun popular(page: Int) = listing(browseUrl(page, popularOrder), listItemSelector)
+
+    /** Genre archive: /manga-genre/<slug>/ (Madara default). */
+    protected open val genreSubString = "manga-genre"
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> =
+        listing("$baseUrl/$genreSubString/${app.inkwell.data.model.tagSlug(tag)}/page/$page/?m_orderby=$popularOrder", listItemSelector)
     override suspend fun latest(page: Int) = listing(browseUrl(page, latestOrder), listItemSelector)
 
     protected open fun searchUrl(query: String, page: Int): String =

@@ -61,7 +61,8 @@ class LightNovelToSource(client: OkHttpClient) : ScraperNovelSource(client) {
             val img = a.selectFirst("img")
             if (name.isEmpty() && img != null) name = img.attr("alt").trim()
             if (name.isEmpty()) return@mapNotNull null
-            Entry(id, path, name, abs(img?.attr("src")), ContentType.NOVEL)
+            Entry(id, path, name, abs(img?.attr("src")), ContentType.NOVEL,
+                app.inkwell.data.model.chapterNumber(a.selectFirst("p:contains(chapters)")?.text()))
         }
     }
 

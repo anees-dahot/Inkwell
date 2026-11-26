@@ -47,19 +47,31 @@ abstract class ScraperSource(protected val client: OkHttpClient) {
         return b.build()
     }
 
-    protected suspend fun Call.bodyString(): String = withContext(Dispatchers.IO) {
-        execute().use { r ->
-            if (!r.isSuccessful) {
-                if (r.code == 403 || r.code == 503) {
-                    val snippet = runCatching { r.body?.string() }.getOrNull()
-                    if (Cloudflare.isChallenge(r.code, r.header("Server"), r.header("cf-mitigated"), snippet)) {
-                        throw CloudflareException(r.request.url.toString())
-                    }
-                }
-                error("$name HTTP ${r.code}")
+    /**
+     * Runs the call asynchronously so coroutine cancellation (feed timeouts, leaving a screen)
+     * really aborts the HTTP request instead of letting it hog a slow connection.
+     */
+    protected suspend fun Call.bodyString(): String = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { runCatching { cancel() } }
+        enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: Call, e: java.io.IOException) { cont.resumeWith(Result.failure(e)) }
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                cont.resumeWith(runCatching { response.use { r -> readBody(r) } })
             }
-            r.body?.string().orEmpty()
+        })
+    }
+
+    private fun readBody(r: okhttp3.Response): String {
+        if (!r.isSuccessful) {
+            if (r.code == 403 || r.code == 503) {
+                val snippet = runCatching { r.body?.string() }.getOrNull()
+                if (Cloudflare.isChallenge(r.code, r.header("Server"), r.header("cf-mitigated"), snippet)) {
+                    throw CloudflareException(r.request.url.toString())
+                }
+            }
+            error("$name HTTP ${r.code}")
         }
+        return r.body?.string().orEmpty()
     }
 
     protected suspend fun fetch(url: String): String =

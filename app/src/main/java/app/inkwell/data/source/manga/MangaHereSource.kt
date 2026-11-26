@@ -5,13 +5,14 @@ import app.inkwell.data.model.EntryDetails
 import app.inkwell.data.model.Episode
 import app.inkwell.data.model.Page
 import app.inkwell.data.model.PagedResult
+import app.inkwell.data.model.chapterNumber
 import app.inkwell.data.source.ScraperMangaSource
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 
 /** Port of Keiyoushi's MangaHere extension (www.mangahere.cc). Shares its backend with Fanfox. */
-open class MangaHereSource(client: OkHttpClient) : ScraperMangaSource(client) {
+open class MangaHereSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://www.mangahere.cc"
     override val id = "mangahere"
     override val name = "MangaHere"
@@ -31,7 +32,8 @@ open class MangaHereSource(client: OkHttpClient) : ScraperMangaSource(client) {
         val items = d.select("ul.manga-list-1-list li, ul.manga-list-4-list li").mapNotNull { el ->
             val a = el.selectFirst("p.manga-list-1-item-title a, p.manga-list-4-item-title a") ?: return@mapNotNull null
             Entry(id, a.attr("href"), a.attr("title").ifEmpty { a.text() },
-                ref(https(el.selectFirst("img[class*=cover]")?.attr("src"))), type)
+                ref(https(el.selectFirst("img[class*=cover]")?.attr("src"))), type,
+                chapterNumber(el.selectFirst("p.manga-list-1-item-subtitle a, p.manga-list-4-item-subtitle a")?.text()?.takeIf { "Ch." in it }?.substringAfterLast("Ch.")))
         }
         val next = d.select(".pager-list-left a").lastOrNull()
         val hasNext = next != null && next.text().trim() == ">" && !next.attr("href").startsWith("javascript")
@@ -39,6 +41,20 @@ open class MangaHereSource(client: OkHttpClient) : ScraperMangaSource(client) {
     }
 
     override suspend fun popular(page: Int) = listing(doc("$baseUrl/directory/$page.htm?views.za"))
+
+    private val genreSlugs = setOf(
+        "action", "adventure", "comedy", "doujinshi", "drama", "ecchi", "fantasy", "gender_bender", "harem",
+        "historical", "horror", "josei", "martial_arts", "mature", "mecha", "mystery", "one_shot", "psychological",
+        "romance", "school_life", "sci_fi", "seinen", "shoujo", "shoujo_ai", "shounen", "shounen_ai",
+        "slice_of_life", "smut", "sports", "supernatural", "tragedy", "webtoons", "yaoi", "yuri",
+    )
+
+    /** /directory/<genre_slug>/<page>.htm (unknown slugs silently fall back to the full directory, so gate on a known set). */
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).replace('-', '_')
+        if (slug !in genreSlugs) return PagedResult(emptyList(), false)
+        return listing(doc("$baseUrl/directory/$slug/$page.htm?views.za"))
+    }
 
     override suspend fun latest(page: Int) = listing(doc("$baseUrl/directory/$page.htm?latest.az"))
 

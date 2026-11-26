@@ -189,7 +189,7 @@ fun LibraryScreen(hazeState: HazeState, onOpen: (Entry) -> Unit, onContinue: (ap
                 }
             }
             items(shown, key = { libKey(it.sourceId, it.entryId) }) { li ->
-                val e = Entry(li.sourceId, li.entryId, li.title, li.coverUrl, ContentType.valueOf(li.type))
+                val e = Entry(li.sourceId, li.entryId, li.title, li.coverUrl, ContentType.valueOf(li.type), li.lastChapterNumber)
                 val k = libKey(li.sourceId, li.entryId)
                 val isSel = k in selected
                 val badge = unreadMap[k] ?: 0
@@ -307,6 +307,7 @@ private fun LibraryCell(e: Entry, badge: Int, selected: Boolean, compact: Boolea
             ) { Text(e.title, color = Color.White, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             UnreadBadge(badge, Modifier.align(Alignment.TopEnd).padding(5.dp))
             if (selected) SelectionMark(Modifier.align(Alignment.TopStart).padding(6.dp))
+            else ChapterBadge(e.latest, Modifier.align(Alignment.TopStart).padding(5.dp))
         }
         if (!compact) {
             Spacer(Modifier.height(6.dp))

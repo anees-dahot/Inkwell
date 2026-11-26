@@ -12,7 +12,7 @@ import org.jsoup.nodes.Element
 import java.util.Locale
 
 /** Standalone Madara-theme scraper shared by the adult manhwa sites (own copy, independent of MadaraSource). */
-abstract class AdultMadaraSource(client: OkHttpClient) : ScraperMangaSource(client) {
+abstract class AdultMadaraSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     /** URL segment of the series listing, e.g. "manga" or "series". */
     protected abstract val seriesPath: String
     override val lang = "en"
@@ -27,7 +27,8 @@ abstract class AdultMadaraSource(client: OkHttpClient) : ScraperMangaSource(clie
         val items = d.select("div.page-item-detail, div.c-tabs-item__content").mapNotNull { el ->
             val a = el.select(".post-title a").firstOrNull { it.text().isNotBlank() } ?: return@mapNotNull null
             val href = a.absUrl("href").ifEmpty { return@mapNotNull null }
-            Entry(id, path(href), a.text().trim(), ref(img(el.selectFirst("img"))), type)
+            Entry(id, path(href), a.text().trim(), ref(img(el.selectFirst("img"))), type,
+                app.inkwell.data.model.chapterNumber(el.selectFirst(".chapter-item .chapter a, .latest-chap .chapter a, span.chapter a")?.text()))
         }.distinctBy { it.id }
         val next = d.selectFirst("a.nextpostslink, .nav-previous a, a.next.page-numbers") != null
         return PagedResult(items, next)
@@ -46,6 +47,18 @@ abstract class AdultMadaraSource(client: OkHttpClient) : ScraperMangaSource(clie
 
     override suspend fun popular(page: Int) = listing("views", null, page)
     override suspend fun latest(page: Int) = listing("latest", null, page)
+
+    /** Taxonomy URL segment of genre archives; sites that rename it override this. */
+    protected open val genreSubString = "manga-genre"
+    override suspend fun byTag(tag: String, page: Int): PagedResult<Entry> {
+        val slug = app.inkwell.data.model.tagSlug(tag).ifEmpty { return PagedResult(emptyList(), false) }
+        val d = try {
+            doc("$baseUrl/$genreSubString/$slug/page/$page/?m_orderby=views")
+        } catch (e: IllegalStateException) {
+            if (e.message?.contains("404") == true) return PagedResult(emptyList(), false) else throw e
+        }
+        return parseList(d)
+    }
     override suspend fun search(query: String, page: Int): PagedResult<Entry> =
         if (query.isBlank()) popular(page) else listing(null, query.trim(), page)
 
