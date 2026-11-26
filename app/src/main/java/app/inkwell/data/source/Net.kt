@@ -77,6 +77,7 @@ object Net {
         OkHttpClient.Builder()
             .connectionPool(pool)
             .cookieJar(cookies)
+            .dns(Ipv4FirstDns)
             .dispatcher(Dispatcher().apply { maxRequests = 12; maxRequestsPerHost = 4 }.also { imageDispatcher = it })
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
@@ -136,15 +137,32 @@ object ImageHeaders : Interceptor {
     }
 }
 
-/** Retries transient failures (timeouts, resets, 5xx, 429) with backoff. */
+/**
+ * IPv4 addresses first. Many mobile / home networks advertise IPv6 that doesn't actually route,
+ * which shows up as "Network is unreachable" or long connect stalls before falling back.
+ */
+object Ipv4FirstDns : okhttp3.Dns {
+    override fun lookup(hostname: String): List<java.net.InetAddress> {
+        val all = try { okhttp3.Dns.SYSTEM.lookup(hostname) } catch (e: java.net.UnknownHostException) {
+            // resolvers hiccup on flaky links; one quick retry before giving up
+            Thread.sleep(300); okhttp3.Dns.SYSTEM.lookup(hostname)
+        }
+        return all.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
+    }
+}
+
+/** Retries transient failures (timeouts, resets, 5xx, 429) with backoff. Only GET/HEAD are retried. */
 class RetryInterceptor(private val tries: Int) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
+        val m = chain.request().method
+        if (m != "GET" && m != "HEAD") return chain.proceed(chain.request())
         var last: IOException? = null
         for (attempt in 0 until tries) {
             if (chain.call().isCanceled()) break
             try {
                 val r = chain.proceed(chain.request())
-                if ((r.code in 500..599 || r.code == 429) && attempt < tries - 1) {
+                val challenge = r.header("Server")?.contains("cloudflare", true) == true && (r.code == 403 || r.code == 503)
+                if ((r.code in 500..599 || r.code == 429) && !challenge && attempt < tries - 1) {
                     r.close(); Thread.sleep(800L * (attempt + 1)); continue
                 }
                 return r

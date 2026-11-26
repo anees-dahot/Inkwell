@@ -100,6 +100,8 @@ fun EntryGridItem(
             Cover(entry.coverUrl, Modifier.fillMaxWidth().sharedCover("cover-${entry.sourceId}-${entry.id}"))
             UnreadBadge(badge, Modifier.align(Alignment.TopEnd).padding(6.dp))
             ChapterBadge(entry.latest, Modifier.align(Alignment.TopStart).padding(6.dp))
+            val adultSource = LocalContainer.current.registry.find(entry.sourceId)?.name?.contains("18+") == true
+            if (entry.adult || adultSource) AdultBadge(Modifier.align(Alignment.BottomStart).padding(6.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -279,4 +281,21 @@ fun ChapterBadge(latest: Float?, modifier: Modifier = Modifier) {
     Box(
         modifier.clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.62f)).padding(horizontal = 6.dp, vertical = 2.dp),
     ) { Text("Ch. $n", color = Color.White, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1) }
+}
+
+/** Red "18+" pill; tappable on title pages to list more mature titles. */
+@Composable
+fun AdultChip(onClick: (() -> Unit)? = null) {
+    val m = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFE5484D))
+    Box((if (onClick != null) m.pressable(onClick = onClick) else m).padding(horizontal = 14.dp, vertical = 7.dp)) {
+        Text("18+", color = Color.White, style = InkType.callout.copy(fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+    }
+}
+
+/** Small "18+" mark over a cover corner. */
+@Composable
+fun AdultBadge(modifier: Modifier = Modifier) {
+    Box(modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFE5484D)).padding(horizontal = 5.dp, vertical = 2.dp)) {
+        Text("18+", color = Color.White, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+    }
 }

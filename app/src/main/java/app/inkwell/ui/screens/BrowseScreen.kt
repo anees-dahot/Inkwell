@@ -53,6 +53,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
+import app.inkwell.data.model.isAdult
 import kotlinx.coroutines.coroutineScope
 import app.inkwell.data.source.Net
 
@@ -79,9 +81,14 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
     private var searchJob: Job? = null
     private var moreSources: Set<String>? = null
 
-    init { reload() }
+    init {
+        reload()
+        // re-run the feed when 18+ content is switched on/off in settings
+        viewModelScope.launch { c.settings.showAdult.drop(1).collect { if (sourceId?.let { id -> c.registry.find(id)?.isAdult } == true) sourceId = null; reload() } }
+    }
 
-    fun sourcesFor(t: ContentType) = c.registry.sources.filter { it.type == t }
+    private val showAdult get() = c.settings.showAdult.value
+    fun sourcesFor(t: ContentType) = c.registry.sources.filter { it.type == t && (showAdult || !it.isAdult) }
     fun selectType(t: ContentType) {
         if (t == type) return
         type = t; sourceId = null; query = ""; tab = 0
@@ -109,13 +116,14 @@ class BrowseViewModel(private val c: AppContainer) : ViewModel() {
     private suspend fun fetch(src: app.inkwell.data.model.Source, p: Int): app.inkwell.data.model.PagedResult<Entry> {
         val q = query.trim()
         val key = src.id + "|" + (if (q.isNotEmpty()) "s:$q" else if (tab == 0) "p" else "l") + "|" + p
-        return ResultCache.cached(key, force) {
+        val r = ResultCache.cached(key, force) {
             when {
                 q.isNotEmpty() -> src.search(q, p)
                 tab == 0 -> src.popular(p)
                 else -> src.latest(p)
             }
         }
+        return if (showAdult) r else r.copy(items = r.items.filterNot { it.adult })
     }
 
     /** Pinned, then recently used, then fastest; benched (repeatedly failing) sources dropped. */
@@ -407,6 +415,7 @@ private fun SourceSelector(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(s.name.substringBefore(" ("), style = InkType.body, color = ink.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                if (s.isAdult) AdultBadge(Modifier.padding(end = 8.dp))
                                 Text(s.lang.uppercase(), style = InkType.caption, color = ink.secondary)
                                 if (s.id == currentId) Icon(Icons.Outlined.Check, null, tint = ink.accent, modifier = Modifier.padding(start = 10.dp).size(18.dp))
                             }

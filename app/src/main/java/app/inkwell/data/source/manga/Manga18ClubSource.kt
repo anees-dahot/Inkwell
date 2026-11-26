@@ -18,7 +18,7 @@ import java.util.Locale
 class Manga18ClubSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
     override val baseUrl = "https://manga18.club"
     override val id = "manga18club"
-    override val name = "Manga18.Club"
+    override val name = "Manga18.Club (18+)"
     override val lang = "en"
 
     override val headers = mapOf("Referer" to "$baseUrl/")

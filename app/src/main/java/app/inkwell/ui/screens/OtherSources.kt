@@ -20,6 +20,7 @@ import androidx.lifecycle.viewModelScope
 import app.inkwell.AppContainer
 import app.inkwell.data.model.Entry
 import app.inkwell.data.model.PagedResult
+import app.inkwell.data.model.isAdult
 import app.inkwell.data.source.SourceHealth
 import app.inkwell.data.source.fanOut
 import app.inkwell.data.source.sameTitle
@@ -34,6 +35,24 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+/**
+ * Searches [src] by each name in turn and returns the first result that really is the series
+ * (single-item page), or an empty page.
+ */
+suspend fun searchAny(src: app.inkwell.data.model.Source, titles: List<String>): PagedResult<Entry> {
+    for (t in titles) {
+        val r = src.search(t, 1)
+        val hit = r.items.firstOrNull { e -> titles.any { sameTitle(e.title, it) } }
+        if (hit != null) return PagedResult(listOf(hit), false)
+        // titles with a subtitle often only match on the main part
+        if (t.contains(':')) {
+            val r2 = src.search(t.substringBefore(':').trim(), 1)
+            r2.items.firstOrNull { e -> titles.any { sameTitle(e.title, it) } }?.let { return PagedResult(listOf(it), false) }
+        }
+    }
+    return PagedResult(emptyList(), false)
+}
 
 /** One copy of a title on some source, with its chapter count once known. */
 class SourceCopy(val entry: Entry, chapters: Int? = null, latest: Float? = null) {
@@ -56,16 +75,17 @@ class OtherSourcesViewModel(private val c: AppContainer, private val origin: Ent
         count(copies.first())
         viewModelScope.launch {
             searching = true
-            val others = c.registry.sources.filter { it.type == origin.type && it.id != origin.sourceId && !SourceHealth.benched(it.id) }
+            // 18+ sources only when enabled, or when the title itself already comes from one
+            val allowAdult = c.settings.showAdult.value || origin.adult || c.registry.find(origin.sourceId)?.isAdult == true
+            val others = c.registry.sources.filter { it.type == origin.type && it.id != origin.sourceId && it !is app.inkwell.data.model.CatalogOnly && !SourceHealth.benched(it.id) &&
+                (allowAdult || !it.isAdult) }
             progress = 0 to others.size
-            fanOut(others, op = { src ->
-                // titles with a subtitle often only match on the main part
-                val r = src.search(origin.title, 1)
-                if (r.items.none { sameTitle(it.title, origin.title) } && origin.title.contains(':'))
-                    src.search(origin.title.substringBefore(':').trim(), 1) else r
-            }) { _, r: PagedResult<Entry>? ->
+            val titles = (listOf(origin.title) + runCatching { c.repo.details(origin.sourceId, origin.id).altTitles }.getOrDefault(emptyList()))
+                .map { it.trim() }.filter { t -> t.length >= 3 && t.count { it.code < 0x250 } * 2 >= t.length }
+                .distinctBy { app.inkwell.data.source.titleKey(it) }.take(3)
+            fanOut(others, op = { src -> searchAny(src, titles) }) { _, r: PagedResult<Entry>? ->
                 progress = (progress.first + 1) to progress.second
-                val hit = r?.items?.firstOrNull { sameTitle(it.title, origin.title) } ?: return@fanOut
+                val hit = r?.items?.firstOrNull() ?: return@fanOut
                 if (copies.any { it.entry.sourceId == hit.sourceId }) return@fanOut
                 val copy = SourceCopy(hit)
                 copies = copies + copy

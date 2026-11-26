@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 class NovelHallSource(client: OkHttpClient) : ScraperNovelSource(client) {
     override val id = "novelhall"
     override val name = "Novel Hall"
-    override val baseUrl = "https://novelhall.com"
+    override val baseUrl = "https://www.novelhall.com"
     override val lang = "en"
 
     override suspend fun popular(page: Int): PagedResult<Entry> {

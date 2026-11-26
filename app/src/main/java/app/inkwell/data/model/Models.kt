@@ -10,7 +10,17 @@ data class Entry(
     val type: ContentType,
     /** Newest chapter number shown on listing pages, when the source lists it. */
     val latest: Float? = null,
+    /** Flagged mature by the source itself (e.g. MangaDex erotica / pornographic rating). */
+    val adult: Boolean = false,
 )
+
+private val ADULT_GENRES = setOf("adult", "mature", "smut", "hentai", "erotica", "pornographic", "18+", "r-18", "r18", "sexual violence", "yaoi(bl) 18+")
+
+/** Genre names that mark a title as 18+. */
+fun isAdultGenre(g: String): Boolean = g.trim().lowercase() in ADULT_GENRES
+
+/** Sources that only carry 18+ titles. */
+val Source.isAdult: Boolean get() = name.contains("18+")
 
 private val CHAPTER_NUM = Regex("""(?:chapter|chap|ch|episode|ep)\.?\s*(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
 private val ANY_NUM = Regex("""(\d+(?:\.\d+)?)""")
@@ -30,6 +40,8 @@ data class EntryDetails(
     val status: String?,
     /** Official licensed reading page, if the source knows one. */
     val officialUrl: String? = null,
+    /** Other names of the series (English first), used to find it on other sources. */
+    val altTitles: List<String> = emptyList(),
 )
 
 /** A chapter or episode. */
@@ -73,6 +85,9 @@ interface VideoSource : Source {
 interface NovelSource : Source {
     suspend fun chapterText(episodeId: String): List<String>
 }
+
+/** Marker: the source lists titles but can't serve chapters; title pages send readers to other sources. */
+interface CatalogOnly
 
 /** Optional: sources that can list every title carrying a genre / tag. */
 interface TagBrowsable {

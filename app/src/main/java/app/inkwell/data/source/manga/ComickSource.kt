@@ -21,7 +21,7 @@ import okhttp3.OkHttpClient
  * Search/browse is open; /comic and /chapter endpoints sit behind a Cloudflare challenge, so
  * details/chapters/pages rely on the app's Cloudflare WebView clearance (CloudflareException).
  */
-class ComickSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable {
+class ComickSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwell.data.model.TagBrowsable, app.inkwell.data.model.CatalogOnly {
     override val baseUrl = "https://comick.dev"
     override val id = "comick"
     override val name = "Comick"
@@ -86,10 +86,17 @@ class ComickSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwe
             status = when (c["status"]?.jsonPrimitive?.intOrNull) {
                 1 -> "Ongoing"; 2 -> "Completed"; 3 -> "Cancelled"; 4 -> "On Hiatus"; else -> null
             },
+            altTitles = c["md_titles"]?.jsonArray?.map { it.jsonObject }
+                ?.sortedBy { if (s(it["lang"]) == "en") 0 else 1 }
+                ?.mapNotNull { s(it["title"]) }.orEmpty(),
         )
     }
 
-    override suspend fun episodes(entryId: String): List<Episode> {
+    // Chapters exist on Comick but have no images any more: report none so the title page offers other sources.
+    override suspend fun episodes(entryId: String): List<Episode> = emptyList()
+
+    @Suppress("unused")
+    private suspend fun listedChapters(entryId: String): List<Episode> {
         val h = hid(entryId)
         val seen = HashSet<String>()
         val out = ArrayList<Episode>()
@@ -125,9 +132,15 @@ class ComickSource(client: OkHttpClient) : ScraperMangaSource(client), app.inkwe
         return out
     }
 
+    /**
+     * Comick stopped hosting chapter images (the API returns chapters without `images`), so it now
+     * works as a catalog: browse/search/genres still work, and with no readable chapters the title
+     * page offers the same series on other sources.
+     */
     override suspend fun pages(episodeId: String): List<Page> {
-        val ch = json("$api/chapter/${hid(episodeId)}/?tachiyomi=true").jsonObject["chapter"]!!.jsonObject
-        return ch["images"]!!.jsonArray.mapNotNull { s(it.jsonObject["url"]) }
-            .mapIndexed { i, u -> Page(i, ref(u)!!) }
+        val ch = json("$api/chapter/${hid(episodeId)}/?tachiyomi=true").jsonObject["chapter"]?.jsonObject
+        val imgs = ch?.get("images")?.jsonArray?.mapNotNull { s(it.jsonObject["url"]) }.orEmpty()
+        if (imgs.isEmpty()) error("Comick no longer hosts chapter images. Open this title on another source.")
+        return imgs.mapIndexed { i, u -> Page(i, ref(u)!!) }
     }
 }

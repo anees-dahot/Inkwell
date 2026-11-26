@@ -87,6 +87,7 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
     val lockMin by s.lockMinutes.collectAsStateWithLifecycle()
     val secure by s.secureScreen.collectAsStateWithLifecycle()
     val incognito by s.incognito.collectAsStateWithLifecycle()
+    val showAdult by s.showAdult.collectAsStateWithLifecycle()
     val lockOptions = listOf(-1, 0, 1, 5, 15)
     val canDynamic = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     var message by remember { mutableStateOf<String?>(null) }
@@ -156,6 +157,8 @@ fun MoreScreen(hazeState: HazeState, onOpenUpcoming: () -> Unit = {}, onOpenDown
             item {
                 GroupedCard {
                     ToggleRow("Incognito mode", incognito) { s.setIncognito(it) }
+                    Hairline()
+                    ToggleRow("Show 18+ sources and titles", showAdult) { s.setShowAdult(it); app.inkwell.data.source.ResultCache.clear() }
                     Hairline()
                     SettingRow("App lock") {
                         SegmentedControl(listOf("Off", "Instantly", "1 min", "5 min", "15 min"), lockOptions.indexOf(lockMin).coerceAtLeast(0), {

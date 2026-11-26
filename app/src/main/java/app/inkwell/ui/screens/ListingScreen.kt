@@ -19,6 +19,7 @@ import app.inkwell.data.model.Entry
 import app.inkwell.data.model.PagedResult
 import app.inkwell.data.model.Source
 import app.inkwell.data.model.TagBrowsable
+import app.inkwell.data.model.isAdult
 import app.inkwell.data.source.Net
 import app.inkwell.data.source.ResultCache
 import app.inkwell.data.source.ScraperSource
@@ -75,14 +76,15 @@ class ListingViewModel(
     fun loadMore() { if (!loading && hasNext && error == null) load() }
 
     val allTagSources: List<Source>
-        get() = c.registry.sources.filter { it.type == type && it is TagBrowsable && !SourceHealth.benched(it.id) }
+        get() = c.registry.sources.filter { it.type == type && it is TagBrowsable && !SourceHealth.benched(it.id) && (showAdult || !it.isAdult) }
+    private val showAdult get() = c.settings.showAdult.value
 
     private fun targets(): List<Source> = when {
         tag == null -> listOfNotNull(origin)
         tab == 0 -> listOfNotNull(origin)
         else -> allTagSources.ifEmpty {
             // no source of this type has genre pages: search the tag name everywhere instead
-            c.registry.sources.filter { it.type == type && !SourceHealth.benched(it.id) }
+            c.registry.sources.filter { it.type == type && !SourceHealth.benched(it.id) && (showAdult || !it.isAdult) }
         }
     }
 
@@ -92,13 +94,14 @@ class ListingViewModel(
             src is TagBrowsable -> "t:$tag"
             else -> "s:$tag"
         } + "|" + p
-        return ResultCache.cached(key, force) {
+        val r = ResultCache.cached(key, force) {
             when {
                 tag == null -> if (tab == 0) src.popular(p) else src.latest(p)
                 src is TagBrowsable -> src.byTag(tag, p)
                 else -> src.search(tag, p)
             }
         }
+        return if (showAdult || src.isAdult && sourceId == src.id) r else r.copy(items = r.items.filterNot { it.adult })
     }
 
     private fun load() {

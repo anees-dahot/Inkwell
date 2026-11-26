@@ -143,6 +143,11 @@ class Settings(context: Context) {
 
     private val _incognito = MutableStateFlow(sp.getBoolean("incognito", false))
     val incognito: StateFlow<Boolean> = _incognito
+
+    private val _showAdult = MutableStateFlow(sp.getBoolean("show_adult", true))
+    /** Show 18+ sources and titles in Browse, tags and source comparisons. */
+    val showAdult: StateFlow<Boolean> = _showAdult
+    fun setShowAdult(v: Boolean) { _showAdult.value = v; sp.edit().putBoolean("show_adult", v).apply() }
     fun setIncognito(v: Boolean) { _incognito.value = v; sp.edit().putBoolean("incognito", v).apply() }
 
     // onboarding: existing installs (prefs or DB already present) skip it

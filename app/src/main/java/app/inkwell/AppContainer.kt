@@ -21,10 +21,12 @@ class AppContainer(context: Context) {
 
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(WebViewCookieJar())
+        .dns(Ipv4FirstDns)
         .addInterceptor(ExplicitCookies.stash)
         .addNetworkInterceptor(ExplicitCookies.merge)
         .addInterceptor(CloudflareInterceptor(context))
         .addInterceptor(app.inkwell.data.source.manga.MangaPlusImageInterceptor)
+        .addInterceptor(RetryInterceptor(2))
         .addInterceptor(RateLimitInterceptor("api.mangadex.org", 5))
         .addNetworkInterceptor(NetMeter)
         .connectTimeout(20, TimeUnit.SECONDS)

@@ -14,8 +14,8 @@ android {
         applicationId = "app.inkwell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 150
-        versionName = "1.5.0"
+        versionCode = 151
+        versionName = "1.5.1"
     }
     val ksProps = Properties().apply {
         rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }

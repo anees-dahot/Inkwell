@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -140,9 +141,29 @@ class KdtNovelsSource(client: OkHttpClient) : ScraperNovelSource(client) {
         return cachedEpisodes[entryId].orEmpty()
     }
 
+    /** Chapter body is fetched client-side by the site: bootstrap a reader session cookie, then GET the JSON. */
+    private suspend fun chapterHtml(slug: String, page: String): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        fun Request.Builder.browserLike() = header("Origin", baseUrl).header("Referer", page)
+            .header("Sec-Fetch-Site", "same-origin").header("Sec-Fetch-Mode", "cors").header("Sec-Fetch-Dest", "empty")
+        val sessionReq = request(absPath("api/reader/session/")).newBuilder().browserLike()
+            .header("x-kdt-reader-bootstrap", "1")
+            .post(okhttp3.FormBody.Builder().build()).build()
+        val cookie = client.newCall(sessionReq).execute().use { r ->
+            if (!r.isSuccessful) return@withContext null
+            r.headers("Set-Cookie").firstOrNull { it.startsWith("kdt_reader=") }?.substringBefore(';')
+        } ?: return@withContext null
+        val chReq = request(absPath("api/reader/chapter/" + enc(slug) + "/")).newBuilder().browserLike()
+            .header("Accept", "application/json").header("Cookie", cookie).build()
+        val body = client.newCall(chReq).execute().use { r -> r.body?.string().orEmpty() }
+        runCatching { jsonParser.parseToJsonElement(body) as? JsonObject }.getOrNull()
+            ?.get("content_html")?.jsonPrimitive?.contentOrNull
+    }
+
     override suspend fun chapterText(episodeId: String): List<String> {
-        val d = doc(absPath(episodeId))
-        val content = d.selectFirst("article.reader-content") ?: return emptyList()
+        val slug = episodeId.trim('/').substringAfterLast('/')
+        val page = absPath(episodeId.trim('/') + "/")
+        val html = chapterHtml(slug, page) ?: return emptyList()
+        val content = Jsoup.parse(html, page).body()
         content.select("script, style, noscript").remove()
         // Illustrations are placeholders that the site's script swaps for images.
         content.select(".kdt-ilus[data-ilus]").forEach { el ->

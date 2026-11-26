@@ -34,8 +34,19 @@ class InkittSource(client: OkHttpClient) : ScraperNovelSource(client) {
         return PagedResult(items, items.isNotEmpty())
     }
 
-    override suspend fun popular(page: Int) =
-        parseStories(json("$baseUrl/trending_stories?page=$page&period=alltime"))
+    private val genres = listOf("romance", "fantasy", "scifi", "thriller", "mystery", "horror", "drama")
+
+    /** Site has no global trending page any more: page N lists the popular stories of the Nth genre. */
+    override suspend fun popular(page: Int): PagedResult<Entry> {
+        val genre = genres.getOrNull(page - 1) ?: return PagedResult(emptyList(), false)
+        val d = doc("$baseUrl/genres/$genre")
+        val items = d.select("div[data-test-id=story-card][data-story-id]").mapNotNull { el ->
+            val sid = el.attr("data-story-id").ifEmpty { null } ?: return@mapNotNull null
+            val title = el.attr("data-title").ifEmpty { null } ?: return@mapNotNull null
+            Entry(id, "$genre/$sid", title, el.attr("data-cover-url").ifEmpty { null }, ContentType.NOVEL)
+        }
+        return PagedResult(items, page < genres.size)
+    }
 
     override suspend fun latest(page: Int) = popular(page)
 
@@ -43,17 +54,19 @@ class InkittSource(client: OkHttpClient) : ScraperNovelSource(client) {
         parseStories(json("$baseUrl/api/2/search/title?q=${enc(query)}&page=$page"))
 
     override suspend fun details(entryId: String): EntryDetails {
-        val d = doc("$baseUrl/stories/$entryId")
-        val st = d.select("div.dlc > dl").firstOrNull { it.selectFirst("dt")?.text()?.contains("Status") == true }
-            ?.selectFirst("dd")?.text()?.trim()
         val storyId = entryId.substringAfter('/')
-        val cover = runCatching { str(json("$baseUrl/api/stories/$storyId").jsonObject["vertical_cover"]?.jsonObject?.get("url")) }.getOrNull()
+        val api = json("$baseUrl/api/stories/$storyId").jsonObject
+        val d = runCatching { doc("$baseUrl/stories/$storyId") }.getOrNull()
+        val cover = str(api["vertical_cover"]?.jsonObject?.get("url")) ?: str(api["cover_url"])
+        val author = api["user"]?.jsonObject?.let { str(it["name"]) ?: str(it["username"]) }
+        val genres = api["story_genres"]?.jsonArray?.mapNotNull { str(it.jsonObject["main_genre"]?.jsonObject?.get("name")) }?.distinct().orEmpty()
+            .ifEmpty { listOfNotNull(str(api["category_one"]), str(api["category_two"])) }
         return EntryDetails(
-            entry = Entry(id, entryId, d.select("h1.story-title").text(), cover, ContentType.NOVEL),
-            description = d.select("p.story-summary").text().ifEmpty { null },
-            authors = listOfNotNull(d.select("dl > dd > a.author-link").text().ifEmpty { null }),
-            genres = d.select("dd.genres > a").map { it.text() }.filter { it.isNotEmpty() },
-            status = when (st) { "Complete" -> "Completed"; "Ongoing" -> "Ongoing"; else -> null },
+            entry = Entry(id, entryId, str(api["title"]).orEmpty(), cover, ContentType.NOVEL),
+            description = d?.selectFirst("meta[property=og:description]")?.attr("content")?.ifEmpty { null },
+            authors = listOfNotNull(author),
+            genres = genres,
+            status = null,
         )
     }
 

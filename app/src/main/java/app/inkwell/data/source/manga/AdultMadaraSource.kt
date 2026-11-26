@@ -100,15 +100,19 @@ abstract class AdultMadaraSource(client: OkHttpClient) : ScraperMangaSource(clie
         val d = doc(absPath(entryId))
         val inline = parseChapters(d)
         if (inline.isNotEmpty()) return inline
+        // newer Madara: POST <series>/ajax/chapters/; older: admin-ajax (now often 400). Try both, never abort on one.
+        tryChapters { formPost(absPath(entryId).trimEnd('/') + "/ajax/chapters/", emptyMap()) }?.let { return it }
         val mid = d.selectFirst("[data-id]#manga-chapters-holder, #manga-chapters-holder")?.attr("data-id")
             ?: Regex("\"manga_id\":\"?(\\d+)").find(d.html())?.groupValues?.get(1)
-        if (mid != null) {
-            val r = formPost("$baseUrl/wp-admin/admin-ajax.php", mapOf("action" to "manga_get_chapters", "manga" to mid))
-            val l = parseChapters(r)
-            if (l.isNotEmpty()) return l
-        }
-        return parseChapters(formPost(absPath(entryId).trimEnd('/') + "/ajax/chapters/", emptyMap()))
+        if (mid != null) tryChapters {
+            formPost("$baseUrl/wp-admin/admin-ajax.php", mapOf("action" to "manga_get_chapters", "manga" to mid))
+        }?.let { return it }
+        return emptyList()
     }
+
+    private suspend fun tryChapters(load: suspend () -> org.jsoup.nodes.Document): List<Episode>? = try {
+        parseChapters(load()).takeIf { it.isNotEmpty() }
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
 
     override suspend fun pages(episodeId: String): List<Page> =
         doc(absPath(episodeId)).select("div.reading-content img, .page-break img")

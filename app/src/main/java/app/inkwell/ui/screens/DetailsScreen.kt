@@ -131,22 +131,31 @@ class DetailsViewModel(
         }
     }
 
+    /** Names to look the series up by: the listed title, then English/latin alternative titles. */
+    val searchTitles: List<String>
+        get() = (listOf(entry.title) + details?.altTitles.orEmpty())
+            .map { it.trim() }.filter { t -> t.length >= 3 && t.count { it.code < 0x250 } * 2 >= t.length }
+            .distinctBy { app.inkwell.data.source.titleKey(it) }.take(3)
+
     private suspend fun findAlternatives() {
-        val title = entry.title.ifBlank { return }
-        val key = app.inkwell.data.source.titleKey(title)
-        if (key.isEmpty()) return
-        val others = c.registry.sources.filter { it.type == source.type && it.id != sourceId && !app.inkwell.data.source.SourceHealth.benched(it.id) }
+        val titles = searchTitles.ifEmpty { return }
+        val others = c.registry.sources.filter { it.type == source.type && it.id != sourceId && it !is app.inkwell.data.model.CatalogOnly && !app.inkwell.data.source.SourceHealth.benched(it.id) &&
+            (c.settings.showAdult.value || isAdult || !it.name.contains("18+")) }
         findingAlternatives = true
         val found = ArrayList<Entry>()
-        app.inkwell.data.source.fanOut(others, op = { it.search(title, 1) }) { _, r ->
-            val hit = r?.items?.firstOrNull { app.inkwell.data.source.titleKey(it.title) == key }
-                ?: r?.items?.firstOrNull { app.inkwell.data.source.sameTitle(it.title, title) }
-            if (hit != null) { found += hit; alternatives = found.toList() }
+        app.inkwell.data.source.fanOut(others, op = { src -> searchAny(src, titles) }) { _, r ->
+            val hit = r?.items?.firstOrNull() ?: return@fanOut
+            found += hit; alternatives = found.toList()
         }
         findingAlternatives = false
     }
 
     fun sourceName(id: String) = c.registry.find(id)?.name?.substringBefore(" (") ?: id
+
+    val catalogOnly get() = source is app.inkwell.data.model.CatalogOnly
+    /** 18+: from an adult source, flagged by the source, or carrying an adult genre. */
+    val isAdult: Boolean get() = source.name.contains("18+") || baseEntry.adult || details?.entry?.adult == true ||
+        details?.genres?.any { app.inkwell.data.model.isAdultGenre(it) } == true
 
     val remind = c.repo.observeRemind(sourceId, entryId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -338,9 +347,11 @@ fun DetailsScreen(
                                 Modifier.fillMaxWidth(),
                             ) { onOpenEpisode(entry, ep) }
                         }
-                        vm.details?.genres?.takeIf { it.isNotEmpty() }?.let { g ->
+                        val genres = vm.details?.genres.orEmpty()
+                        if (genres.isNotEmpty() || vm.isAdult) genres.let { g ->
                             Spacer(Modifier.height(16.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (vm.isAdult) AdultChip { onOpenTag(g.firstOrNull { app.inkwell.data.model.isAdultGenre(it) } ?: "Adult") }
                                 g.take(16).forEach { t -> Chip(t) { onOpenTag(t) } }
                             }
                         }
@@ -419,6 +430,8 @@ fun DetailsScreen(
                 item {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         val msg = when {
+                            vm.catalogOnly && vm.alternatives.isNotEmpty() -> "${vm.sourceName(sourceId)} only lists titles. Read it on:"
+                            vm.catalogOnly && vm.findingAlternatives -> "${vm.sourceName(sourceId)} only lists titles. Finding it on other sources…"
                             vm.alternatives.isNotEmpty() -> "Not on ${vm.sourceName(sourceId)}. Read it from another source:"
                             vm.findingAlternatives -> "Not on ${vm.sourceName(sourceId)}. Looking on other sources…"
                             official != null -> "This title is licensed and no other source has it."

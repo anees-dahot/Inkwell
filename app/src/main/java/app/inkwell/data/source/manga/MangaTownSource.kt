@@ -7,6 +7,8 @@ import app.inkwell.data.model.Page
 import app.inkwell.data.model.PagedResult
 import app.inkwell.data.source.ScraperMangaSource
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import okhttp3.OkHttpClient
 import org.jsoup.nodes.Document
 
@@ -97,7 +99,23 @@ class MangaTownSource(client: OkHttpClient) : ScraperMangaSource(client), app.in
         }
     }
 
-    override suspend fun pages(episodeId: String): List<Page> =
-        doc(absPath(episodeId)).select("img.image").mapNotNull { https(it.attr("src").ifEmpty { null }) }
-            .mapIndexed { i, u -> Page(i, ref(u)!!) }
+    override suspend fun pages(episodeId: String): List<Page> {
+        val d = doc(absPath(episodeId))
+        val all = d.select("img.image").mapNotNull { https(it.attr("src").ifEmpty { null }) }
+        if (all.isNotEmpty()) return all.mapIndexed { i, u -> Page(i, ref(u)!!) }
+        // Older chapters: one image per sub-page (<chapter>/<n>.html).
+        val total = Regex("""total_pages\s*=\s*(\d+)""").find(d.html())?.groupValues?.get(1)?.toIntOrNull() ?: return emptyList()
+        val base = absPath(episodeId).trimEnd('/')
+        val urls = kotlinx.coroutines.coroutineScope {
+            (1..total).chunked(6).flatMap { chunk ->
+                chunk.map { n ->
+                    async {
+                        if (n == 1) d.selectFirst("img#image")?.attr("src")
+                        else runCatching { doc("$base/$n.html").selectFirst("img#image")?.attr("src") }.getOrNull()
+                    }
+                }.awaitAll()
+            }
+        }
+        return urls.mapNotNull { https(it?.ifEmpty { null }) }.mapIndexed { i, u -> Page(i, ref(u)!!) }
+    }
 }

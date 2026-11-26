@@ -102,6 +102,7 @@ class MangaDexSource(
             coverUrl = coverOf(obj, size),
             type = ContentType.MANGA,
             latest = attrs["lastChapter"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
+            adult = attrs["contentRating"]?.jsonPrimitive?.contentOrNull.let { it == "erotica" || it == "pornographic" },
         )
     }
 
@@ -131,6 +132,9 @@ class MangaDexSource(
             genres = genres,
             status = attrs["status"]?.jsonPrimitive?.contentOrNull?.replaceFirstChar { it.uppercase() },
             officialUrl = attrs["links"]?.let { it as? JsonObject }?.get("engtl")?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("http") } ?: descOfficial,
+            altTitles = attrs["altTitles"]?.jsonArray?.map { it.jsonObject }
+                ?.sortedBy { if (it.containsKey("en")) 0 else 1 }
+                ?.flatMap { o -> o.values.mapNotNull { v -> v.jsonPrimitive.contentOrNull } }.orEmpty(),
         )
     }
 

@@ -143,7 +143,7 @@ class BloodCoreTlSource(client: OkHttpClient) : ScraperNovelSource(client) {
 
     override suspend fun chapterText(episodeId: String): List<String> {
         val d = doc(absPath(episodeId))
-        val content = d.selectFirst("div.hyphens-auto") ?: return emptyList()
+        val content = d.selectFirst("div.reader-prose, div.hyphens-auto") ?: return emptyList()
         if (content.text().trim().isEmpty()) return emptyList()
         return paragraphsOf(content)
     }
